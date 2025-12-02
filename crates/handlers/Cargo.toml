@@ -1,0 +1,31 @@
+[package]
+name = "maestro-handlers"
+description = "Handler bundles for Maestro indexer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+maestro-core.workspace = true
+maestro-graphql.workspace = true
+
+# Async
+tokio.workspace = true
+async-trait.workspace = true
+
+# Database (for migrations)
+sqlx.workspace = true
+
+# GraphQL (for bundle extensions)
+async-graphql = { version = "7.0", features = ["chrono"] }
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Logging
+tracing.workspace = true
+
+# Utilities
+hex.workspace = true
+chrono.workspace = true

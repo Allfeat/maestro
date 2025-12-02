@@ -1,0 +1,31 @@
+[package]
+name = "maestro-graphql"
+description = "GraphQL API for Maestro indexer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+maestro-core.workspace = true
+maestro-storage.workspace = true
+
+# Async
+tokio.workspace = true
+async-trait.workspace = true
+
+# GraphQL
+async-graphql = { version = "7.0", features = ["chrono"] }
+async-graphql-axum = "7.0"
+
+# Web framework
+axum = "0.8"
+tower-http = { version = "0.6", features = ["trace"] }
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Utilities
+tracing.workspace = true
+hex.workspace = true
+chrono.workspace = true

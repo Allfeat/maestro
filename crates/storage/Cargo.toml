@@ -1,0 +1,32 @@
+[package]
+name = "maestro-storage"
+description = "PostgreSQL storage adapter for Maestro"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+maestro-core.workspace = true
+
+# Async
+tokio.workspace = true
+async-trait.workspace = true
+
+# Database
+sqlx.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Error handling
+thiserror.workspace = true
+
+# Utilities
+tracing.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }

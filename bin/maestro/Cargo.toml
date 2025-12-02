@@ -1,0 +1,42 @@
+[package]
+name = "maestro"
+description = "Maestro - Substrate blockchain indexer made by Allfeat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "maestro"
+path = "src/main.rs"
+
+[dependencies]
+# Internal crates
+maestro-core.workspace = true
+maestro-substrate.workspace = true
+maestro-storage.workspace = true
+maestro-graphql.workspace = true
+maestro-handlers.workspace = true
+
+# GraphQL (for schema composition)
+async-graphql = { version = "7.0", features = ["chrono"] }
+
+# Async
+tokio.workspace = true
+
+# CLI
+clap.workspace = true
+
+# Config
+dotenvy.workspace = true
+
+# Error handling
+anyhow.workspace = true
+
+# Logging & Metrics
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+metrics-exporter-prometheus.workspace = true
+
+# Utilities
+hex.workspace = true
+url.workspace = true

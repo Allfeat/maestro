@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: maestro
+      POSTGRES_PASSWORD: maestro
+      POSTGRES_DB: maestro
+    ports:
+      - "5432:5432"
+    volumes:
+      - maestro_data:/var/lib/postgresql/data
+
+volumes:
+  maestro_data:

@@ -1,0 +1,39 @@
+[package]
+name = "maestro-substrate"
+description = "Substrate adapter for Maestro"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# Maestro
+maestro-core.workspace = true
+
+# Async
+tokio.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Error handling
+thiserror.workspace = true
+
+# Utilities
+chrono.workspace = true
+uuid.workspace = true
+hex.workspace = true
+tracing.workspace = true
+parking_lot.workspace = true
+
+# Substrate client
+subxt.workspace = true
+
+# SCALE codec for Substrate types
+codec.workspace = true
+scale-info.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
