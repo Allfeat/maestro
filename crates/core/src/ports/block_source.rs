@@ -11,6 +11,24 @@ use std::pin::Pin;
 use crate::error::ChainResult;
 use crate::models::BlockHash;
 
+// =============================================================================
+// Block Mode
+// =============================================================================
+
+/// Block subscription mode.
+///
+/// Determines which blocks the indexer subscribes to:
+/// - `Finalized`: Only finalized blocks (safe, no reorgs possible)
+/// - `Best`: Best blocks (faster, but may be reorged)
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum BlockMode {
+    /// Subscribe to finalized blocks only (default, safe).
+    #[default]
+    Finalized,
+    /// Subscribe to best blocks (faster, may reorg).
+    Best,
+}
+
 /// Raw block data from the chain before domain transformation.
 #[derive(Debug, Clone)]
 pub struct RawBlock {
@@ -95,10 +113,20 @@ pub trait BlockSource: Send + Sync {
     /// Get the current finalized block head.
     async fn finalized_head(&self) -> ChainResult<FinalizedHead>;
 
-    /// Subscribe to finalized block.
+    /// Get the current best block head (may not be finalized).
+    async fn best_head(&self) -> ChainResult<FinalizedHead>;
+
+    /// Subscribe to finalized blocks.
     ///
-    /// This is the primary method for chain head indexing.
+    /// This is the safest method for chain head indexing - blocks are
+    /// guaranteed to not be reorged.
     async fn subscribe_finalized(&self) -> ChainResult<FinalizedBlockStream>;
+
+    /// Subscribe to best blocks (non-finalized).
+    ///
+    /// This provides faster updates but blocks may be reorged.
+    /// Use with caution - the indexer will need to handle reorgs.
+    async fn subscribe_best(&self) -> ChainResult<FinalizedBlockStream>;
 
     /// Get current runtime version.
     async fn runtime_version(&self) -> ChainResult<u32>;

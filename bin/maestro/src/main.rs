@@ -24,7 +24,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 use async_graphql::{EmptyMutation, EmptySubscription, MergedObject, Schema};
 use maestro_core::error::IndexerError;
 use maestro_core::metrics::init_metrics;
-use maestro_core::ports::BlockSource;
+use maestro_core::ports::{BlockMode, BlockSource};
 use maestro_core::services::{IndexerConfig, IndexerService};
 use maestro_graphql::{CoreQuery, ServerConfig, serve_with_shutdown};
 use maestro_handlers::balances::{BalancesQuery, BalancesStorage, PgBalancesStorage};
@@ -80,6 +80,22 @@ struct Cli {
     /// Log level (trace, debug, info, warn, error).
     #[arg(long, env = "LOG_LEVEL", default_value = "info")]
     log_level: String,
+
+    /// Block subscription mode: finalized (safe) or best (fast but may reorg).
+    #[arg(long, env = "BLOCK_MODE", default_value = "finalized", value_parser = parse_block_mode)]
+    block_mode: BlockMode,
+}
+
+/// Parse block mode from string.
+fn parse_block_mode(s: &str) -> Result<BlockMode, String> {
+    match s.to_lowercase().as_str() {
+        "finalized" => Ok(BlockMode::Finalized),
+        "best" => Ok(BlockMode::Best),
+        _ => Err(format!(
+            "Invalid block mode '{}'. Use 'finalized' or 'best'.",
+            s
+        )),
+    }
 }
 
 #[tokio::main]
@@ -193,6 +209,7 @@ async fn main() -> Result<()> {
 
     let indexer_config = IndexerConfig {
         chain_id: hex::encode(genesis_hash.0),
+        block_mode: cli.block_mode,
         ..Default::default()
     };
 

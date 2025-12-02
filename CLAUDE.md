@@ -45,6 +45,7 @@ docker-compose down                   # Stop PostgreSQL
 | `--metrics-port` | `METRICS_PORT` | `9090` | Prometheus metrics port |
 | `--log-level` | `LOG_LEVEL` | `info` | Log level (trace, debug, info, warn, error) |
 | `--json-logs` | `JSON_LOGS` | `false` | Enable JSON log output |
+| `--block-mode` | `BLOCK_MODE` | `finalized` | Block subscription mode (finalized/best) |
 | `--migrate-only` | - | - | Run migrations and exit |
 | `--purge` | - | - | Purge all indexed data and exit |
 | `-y, --yes` | - | - | Skip confirmation prompts |
@@ -77,7 +78,9 @@ maestro (binary)
 - **Async**: Tokio runtime with `async-trait` for interface definitions
 
 ### Indexing Flow
-1. Subscribe to finalized blocks via Substrate RPC (WebSocket)
+1. Subscribe to blocks via Substrate RPC (WebSocket)
+   - `finalized` mode (default): Safe, no reorgs possible
+   - `best` mode: Faster updates, may require reorg handling
 2. Decode extrinsics/events from SCALE format
 3. Call registered handlers (extensibility point for pallet-specific logic)
 4. Store in PostgreSQL via SQLx

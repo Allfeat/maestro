@@ -104,6 +104,7 @@ Maestro can be configured via CLI arguments or environment variables:
 | `--graphql-port` | `GRAPHQL_PORT` | `4000`                         | GraphQL server port          |
 | `--metrics-port` | `METRICS_PORT` | `9090`                         | Prometheus metrics port      |
 | `--log-level`    | `LOG_LEVEL`    | `info`                         | Log verbosity                |
+| `--block-mode`   | `BLOCK_MODE`   | `finalized`                    | Subscription mode (finalized/best) |
 
 ### Maintenance Commands
 
@@ -190,6 +191,8 @@ cargo fmt
 ## Compatibility
 
 > **Note**: The core indexer and the Balances handler have been tested on a Substrate chain running **polkadot-stable2509** (Polkadot SDK). Compatibility with other versions is not guaranteed and may require adjustments. If you encounter issues with a different runtime version, please open an issue.
+
+> **Best block mode**: When using `--block-mode best`, blocks may be reorged. The indexer will automatically detect and reindex affected blocks, but data may temporarily be inconsistent during reorgs.
 
 ## Note on Development
 

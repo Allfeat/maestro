@@ -81,6 +81,21 @@ impl BlockSource for SubstrateClient {
         })
     }
 
+    async fn best_head(&self) -> ChainResult<FinalizedHead> {
+        // Note: at_latest() returns the best block when using ChainHead backend
+        let head = self
+            .client
+            .blocks()
+            .at_latest()
+            .await
+            .map_err(|e| ChainError::RpcError(e.to_string()))?;
+
+        Ok(FinalizedHead {
+            number: head.number() as u64,
+            hash: head.hash().into(),
+        })
+    }
+
     async fn subscribe_finalized(&self) -> ChainResult<FinalizedBlockStream> {
         let subscription = self
             .client
@@ -91,22 +106,25 @@ impl BlockSource for SubstrateClient {
 
         let stream = subscription.then(|result| async move {
             match result {
-                Ok(block) => {
-                    let extrinsics = decode_extrinsics(&block).await?;
-                    let events = decode_events(&block).await?;
-                    let timestamp = get_block_timestamp(&block).await?;
+                Ok(block) => decode_raw_block(&block).await,
+                Err(e) => Err(ChainError::SubscriptionError(e.to_string())),
+            }
+        });
 
-                    Ok(RawBlock {
-                        number: block.number() as u64,
-                        hash: block.hash().into(),
-                        parent_hash: block.header().parent_hash.into(),
-                        state_root: block.header().state_root.into(),
-                        extrinsics_root: block.header().extrinsics_root.into(),
-                        extrinsics,
-                        events,
-                        timestamp,
-                    })
-                }
+        Ok(Box::pin(stream))
+    }
+
+    async fn subscribe_best(&self) -> ChainResult<FinalizedBlockStream> {
+        let subscription = self
+            .client
+            .blocks()
+            .subscribe_best()
+            .await
+            .map_err(|e| ChainError::SubscriptionError(e.to_string()))?;
+
+        let stream = subscription.then(|result| async move {
+            match result {
+                Ok(block) => decode_raw_block(&block).await,
                 Err(e) => Err(ChainError::SubscriptionError(e.to_string())),
             }
         });
@@ -123,6 +141,24 @@ impl BlockSource for SubstrateClient {
 // =============================================================================
 // Block decoding helpers
 // =============================================================================
+
+/// Decode a SubstrateBlock into a RawBlock.
+async fn decode_raw_block(block: &SubstrateBlock) -> ChainResult<RawBlock> {
+    let extrinsics = decode_extrinsics(block).await?;
+    let events = decode_events(block).await?;
+    let timestamp = get_block_timestamp(block).await?;
+
+    Ok(RawBlock {
+        number: block.number() as u64,
+        hash: block.hash().into(),
+        parent_hash: block.header().parent_hash.into(),
+        state_root: block.header().state_root.into(),
+        extrinsics_root: block.header().extrinsics_root.into(),
+        extrinsics,
+        events,
+        timestamp,
+    })
+}
 
 /// Decode events from a block.
 async fn decode_events(block: &SubstrateBlock) -> ChainResult<Vec<RawEvent>> {
