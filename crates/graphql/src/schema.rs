@@ -19,7 +19,8 @@ use crate::types::MaestroSchema;
 // -----------------------------------------------------------------------------
 
 /// Maximum query depth to prevent deeply nested queries (DoS protection).
-pub const MAX_QUERY_DEPTH: usize = 10;
+/// Note: GraphQL introspection requires depth ~13, so we use 15 to allow it.
+pub const MAX_QUERY_DEPTH: usize = 15;
 
 /// Maximum query complexity score (DoS protection).
 /// Each field has a default complexity of 1, nested objects multiply.

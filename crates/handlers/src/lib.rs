@@ -45,7 +45,9 @@
 //! let handlers = registry.into_handler_registry();
 //! ```
 
+pub mod ats;
 pub mod balances;
+pub mod utils;
 
 mod bundle;
 mod registry;
@@ -53,5 +55,6 @@ mod registry;
 pub use bundle::HandlerBundle;
 pub use registry::BundleRegistry;
 
-// Re-export balances bundle for convenience
+// Re-export bundles for convenience
+pub use ats::AtsBundle;
 pub use balances::BalancesBundle;

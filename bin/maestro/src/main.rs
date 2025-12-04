@@ -27,8 +27,9 @@ use maestro_core::metrics::init_metrics;
 use maestro_core::ports::{BlockMode, BlockSource};
 use maestro_core::services::{IndexerConfig, IndexerService};
 use maestro_graphql::{CoreQuery, ServerConfig, serve_with_shutdown};
+use maestro_handlers::ats::{AtsQuery, AtsStorage, PgAtsStorage};
 use maestro_handlers::balances::{BalancesQuery, BalancesStorage, PgBalancesStorage};
-use maestro_handlers::{BalancesBundle, BundleRegistry};
+use maestro_handlers::{AtsBundle, BalancesBundle, BundleRegistry};
 use maestro_storage::{Database, DatabaseConfig, PgRepositories};
 use maestro_substrate::{SubstrateClient, SubstrateClientConfig};
 
@@ -105,27 +106,34 @@ async fn main() -> Result<()> {
     init_tracing(&cli.log_level, cli.json_logs);
 
     // Prometheus metrics exporter (optional - failures don't crash the app)
-    let metrics_enabled = match format!("0.0.0.0:{}", cli.metrics_port).parse::<std::net::SocketAddr>() {
-        Ok(metrics_addr) => {
-            match PrometheusBuilder::new()
-                .with_http_listener(metrics_addr)
-                .install()
-            {
-                Ok(()) => {
-                    init_metrics();
-                    true
-                }
-                Err(e) => {
-                    warn!("⚠️  Failed to start metrics exporter: {}. Continuing without metrics.", e);
-                    false
+    let metrics_enabled =
+        match format!("0.0.0.0:{}", cli.metrics_port).parse::<std::net::SocketAddr>() {
+            Ok(metrics_addr) => {
+                match PrometheusBuilder::new()
+                    .with_http_listener(metrics_addr)
+                    .install()
+                {
+                    Ok(()) => {
+                        init_metrics();
+                        true
+                    }
+                    Err(e) => {
+                        warn!(
+                            "⚠️  Failed to start metrics exporter: {}. Continuing without metrics.",
+                            e
+                        );
+                        false
+                    }
                 }
             }
-        }
-        Err(e) => {
-            warn!("⚠️  Invalid metrics address: {}. Continuing without metrics.", e);
-            false
-        }
-    };
+            Err(e) => {
+                warn!(
+                    "⚠️  Invalid metrics address: {}. Continuing without metrics.",
+                    e
+                );
+                false
+            }
+        };
 
     // ─────────────────────────────────────────────────────────────────────────
     // 🚀 STARTUP
@@ -153,6 +161,7 @@ async fn main() -> Result<()> {
     // ─────────────────────────────────────────────────────────────────────────
     let mut bundle_registry = BundleRegistry::new();
     bundle_registry.register(Box::new(BalancesBundle::new(db.pool().clone())));
+    bundle_registry.register(Box::new(AtsBundle::new(db.pool().clone())));
 
     // Run bundle-specific migrations
     bundle_registry
@@ -232,19 +241,22 @@ async fn main() -> Result<()> {
         enable_playground: true,
     };
 
-    // Create GraphQL balances storage (for read queries)
+    // Create GraphQL storage instances (for read queries)
     let graphql_balances_storage: Arc<dyn BalancesStorage> =
         Arc::new(PgBalancesStorage::new(graphql_db.pool().clone()));
+    let graphql_ats_storage: Arc<dyn AtsStorage> =
+        Arc::new(PgAtsStorage::new(graphql_db.pool().clone()));
 
     // Compose the GraphQL schema from core + bundle queries
-    // Includes DoS protection: depth limit (10), complexity limit (500)
+    // Includes DoS protection: depth limit (15), complexity limit (500)
     #[derive(MergedObject, Default)]
-    struct Query(CoreQuery, BalancesQuery);
+    struct Query(CoreQuery, BalancesQuery, AtsQuery);
 
     let repos: Arc<dyn maestro_core::ports::Repositories> = graphql_repositories;
     let schema = Schema::build(Query::default(), EmptyMutation, EmptySubscription)
         .data(repos)
         .data(graphql_balances_storage)
+        .data(graphql_ats_storage)
         .limit_depth(maestro_graphql::MAX_QUERY_DEPTH)
         .limit_complexity(maestro_graphql::MAX_QUERY_COMPLEXITY)
         .finish();
