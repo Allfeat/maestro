@@ -1,0 +1,40 @@
+# Build artifacts
+target/
+*.rs.bk
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Nix/direnv
+.direnv/
+.envrc
+flake.nix
+flake.lock
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Local config
+.env
+.env.*
+*.local
+
+# Claude
+.claude/
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Misc
+assets/
