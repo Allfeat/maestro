@@ -116,10 +116,8 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
         debug!(head = head.number, "Chain head detected");
 
         // Subscribe based on mode
-        match self.config.block_mode {
-            BlockMode::Finalized => self.follow_finalized(&mut shutdown_rx).await,
-            BlockMode::Best => self.follow_best(&mut shutdown_rx).await,
-        }
+        self.follow_blocks(&mut shutdown_rx, self.config.block_mode)
+            .await
     }
 
     /// Verify the connected chain matches any existing indexed data.
@@ -216,15 +214,19 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
         }
     }
 
-    /// Follow finalized blocks via subscription.
-    #[instrument(skip_all)]
-    async fn follow_finalized(
+    /// Follow blocks via subscription (finalized or best based on mode).
+    #[instrument(skip_all, fields(mode = ?mode))]
+    async fn follow_blocks(
         &self,
         shutdown_rx: &mut tokio::sync::watch::Receiver<bool>,
+        mode: BlockMode,
     ) -> IndexerResult<()> {
-        use std::time::Duration;
+        let mode_label = match mode {
+            BlockMode::Finalized => "finalized",
+            BlockMode::Best => "best",
+        };
 
-        debug!("Subscribing to finalized blocks");
+        debug!(mode = mode_label, "Subscribing to blocks");
         let _last_indexed = self.verify_consistency_on_reconnect().await?;
 
         // Exponential backoff configuration
@@ -238,9 +240,15 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
                 return Err(IndexerError::ShutdownRequested);
             }
 
-            match self.block_source.subscribe_finalized().await {
+            // Subscribe based on mode
+            let subscription = match mode {
+                BlockMode::Finalized => self.block_source.subscribe_finalized().await,
+                BlockMode::Best => self.block_source.subscribe_best().await,
+            };
+
+            match subscription {
                 Ok(mut stream) => {
-                    debug!("📡 Subscription established");
+                    debug!(mode = mode_label, "📡 Subscription established");
                     retry_delay = INITIAL_RETRY_DELAY; // Reset backoff on success
 
                     while let Some(result) = stream.next().await {
@@ -254,89 +262,11 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
                                 let block_number = raw_block.number;
                                 match self.process_block(raw_block).await {
                                     Ok(true) => {
-                                        info!(block = block_number, "⛓️  Block indexed");
-                                    }
-                                    Ok(false) => {
-                                        trace!(
-                                            block = block_number,
-                                            "Block skipped (already indexed)"
-                                        );
-                                    }
-                                    Err(e) => {
-                                        error!(block = block_number, error = ?e, "❌ Block processing failed");
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                warn!(error = ?e, "⚠️  Subscription error, reconnecting...");
-                                break;
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    warn!(
-                        error = ?e,
-                        retry_in_ms = retry_delay.as_millis(),
-                        "⚠️  Failed to subscribe, retrying..."
-                    );
-                }
-            }
-
-            tokio::select! {
-                _ = tokio::time::sleep(retry_delay) => {
-                    debug!(retry_delay_ms = retry_delay.as_millis(), "🔄 Reconnecting to chain...");
-                    // Exponential backoff: double the delay, up to max
-                    retry_delay = (retry_delay * 2).min(MAX_RETRY_DELAY);
-                }
-                _ = shutdown_rx.changed() => {
-                    if *shutdown_rx.borrow() {
-                        return Err(IndexerError::ShutdownRequested);
-                    }
-                }
-            }
-        }
-    }
-
-    /// Follow best blocks via subscription (non-finalized, faster but may reorg).
-    #[instrument(skip_all)]
-    async fn follow_best(
-        &self,
-        shutdown_rx: &mut tokio::sync::watch::Receiver<bool>,
-    ) -> IndexerResult<()> {
-        use std::time::Duration;
-
-        debug!("Subscribing to best blocks (non-finalized)");
-        let _last_indexed = self.verify_consistency_on_reconnect().await?;
-
-        // Exponential backoff configuration
-        const INITIAL_RETRY_DELAY: Duration = Duration::from_millis(500);
-        const MAX_RETRY_DELAY: Duration = Duration::from_secs(30);
-        let mut retry_delay = INITIAL_RETRY_DELAY;
-
-        loop {
-            if *shutdown_rx.borrow() {
-                debug!("Shutdown requested");
-                return Err(IndexerError::ShutdownRequested);
-            }
-
-            match self.block_source.subscribe_best().await {
-                Ok(mut stream) => {
-                    debug!("📡 Best block subscription established");
-                    retry_delay = INITIAL_RETRY_DELAY; // Reset backoff on success
-
-                    while let Some(result) = stream.next().await {
-                        if *shutdown_rx.borrow() {
-                            debug!("Shutdown requested");
-                            return Err(IndexerError::ShutdownRequested);
-                        }
-
-                        match result {
-                            Ok(raw_block) => {
-                                let block_number = raw_block.number;
-                                match self.process_block(raw_block).await {
-                                    Ok(true) => {
-                                        info!(block = block_number, "⛓️  Block indexed (best)");
+                                        if mode == BlockMode::Best {
+                                            info!(block = block_number, "⛓️  Block indexed (best)");
+                                        } else {
+                                            info!(block = block_number, "⛓️  Block indexed");
+                                        }
                                     }
                                     Ok(false) => {
                                         trace!(
