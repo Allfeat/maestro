@@ -85,6 +85,11 @@ struct Cli {
     /// Block subscription mode: finalized (safe) or best (fast but may reorg).
     #[arg(long, env = "BLOCK_MODE", default_value = "finalized", value_parser = parse_block_mode)]
     block_mode: BlockMode,
+
+    /// Export GraphQL schema (SDL format) to stdout and exit.
+    /// Useful for code generation tools (cynic, graphql-client, etc.)
+    #[arg(long)]
+    export_schema: bool,
 }
 
 /// Parse block mode from string.
@@ -104,6 +109,22 @@ async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
     let cli = Cli::parse();
     init_tracing(&cli.log_level, cli.json_logs);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 📄 SCHEMA EXPORT (early exit, no DB needed)
+    // ─────────────────────────────────────────────────────────────────────────
+    if cli.export_schema {
+        #[derive(MergedObject, Default)]
+        struct Query(CoreQuery, BalancesQuery, AtsQuery);
+
+        let schema = Schema::build(Query::default(), EmptyMutation, EmptySubscription)
+            .limit_depth(maestro_graphql::MAX_QUERY_DEPTH)
+            .limit_complexity(maestro_graphql::MAX_QUERY_COMPLEXITY)
+            .finish();
+
+        println!("{}", schema.sdl());
+        return Ok(());
+    }
 
     // Prometheus metrics exporter (optional - failures don't crash the app)
     let metrics_enabled =

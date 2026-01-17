@@ -23,16 +23,23 @@ COPY crates/core/Cargo.toml crates/core/
 COPY crates/substrate/Cargo.toml crates/substrate/
 COPY crates/storage/Cargo.toml crates/storage/
 COPY crates/graphql/Cargo.toml crates/graphql/
+COPY crates/graphql-schema/Cargo.toml crates/graphql-schema/
+COPY crates/balances-schema/Cargo.toml crates/balances-schema/
+COPY crates/ats-schema/Cargo.toml crates/ats-schema/
 COPY crates/handlers/Cargo.toml crates/handlers/
 
 # Create dummy source files to build dependencies
 RUN mkdir -p bin/maestro/src crates/core/src crates/substrate/src \
-    crates/storage/src crates/graphql/src crates/handlers/src \
+    crates/storage/src crates/graphql/src crates/graphql-schema/src \
+    crates/balances-schema/src crates/ats-schema/src crates/handlers/src \
     && echo "fn main() {}" > bin/maestro/src/main.rs \
     && echo "pub fn dummy() {}" > crates/core/src/lib.rs \
     && echo "pub fn dummy() {}" > crates/substrate/src/lib.rs \
     && echo "pub fn dummy() {}" > crates/storage/src/lib.rs \
     && echo "pub fn dummy() {}" > crates/graphql/src/lib.rs \
+    && echo "pub fn dummy() {}" > crates/graphql-schema/src/lib.rs \
+    && echo "pub fn dummy() {}" > crates/balances-schema/src/lib.rs \
+    && echo "pub fn dummy() {}" > crates/ats-schema/src/lib.rs \
     && echo "pub fn dummy() {}" > crates/handlers/src/lib.rs
 
 # Build dependencies only (cached layer)
