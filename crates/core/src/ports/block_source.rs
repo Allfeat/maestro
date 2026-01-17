@@ -131,3 +131,65 @@ pub trait BlockSource: Send + Sync {
     /// Get current runtime version.
     async fn runtime_version(&self) -> ChainResult<u32>;
 }
+
+// =============================================================================
+// Storage Reader
+// =============================================================================
+
+/// Port trait for reading on-chain storage.
+///
+/// This trait allows handlers to read storage values from the chain
+/// at a specific block. Used by pallets like MIDDS where event data
+/// is minimal and full data must be fetched from storage.
+#[async_trait]
+pub trait StorageReader: Send + Sync {
+    /// Read a storage value at a given block hash.
+    ///
+    /// The key should be the full storage key including pallet and item hashes.
+    /// Returns `None` if the storage item doesn't exist.
+    ///
+    /// # Arguments
+    /// * `block_hash` - The block hash to read storage at
+    /// * `key` - The full storage key (pallet hash + item hash + key hash)
+    async fn read_storage(
+        &self,
+        block_hash: &BlockHash,
+        key: &[u8],
+    ) -> ChainResult<Option<Vec<u8>>>;
+
+    /// Read a storage map value using pallet and item names.
+    ///
+    /// This is a convenience method that constructs the storage key
+    /// from pallet name, item name, and map key.
+    ///
+    /// # Arguments
+    /// * `block_hash` - The block hash to read storage at
+    /// * `pallet` - The pallet name (e.g., "MusicalWorks")
+    /// * `item` - The storage item name (e.g., "MiddsOf")
+    /// * `map_key` - The SCALE-encoded map key
+    async fn read_storage_map(
+        &self,
+        block_hash: &BlockHash,
+        pallet: &str,
+        item: &str,
+        map_key: &[u8],
+    ) -> ChainResult<Option<Vec<u8>>>;
+
+    /// Read a storage map value with a u64 key.
+    ///
+    /// Convenience method for storage maps keyed by u64 (common case like MIDDS IDs).
+    /// Uses the runtime metadata to determine the correct hasher.
+    ///
+    /// # Arguments
+    /// * `block_hash` - The block hash to read storage at
+    /// * `pallet` - The pallet name (e.g., "MusicalWorks")
+    /// * `item` - The storage item name (e.g., "MiddsOf")
+    /// * `key` - The u64 key value
+    async fn read_storage_map_u64(
+        &self,
+        block_hash: &BlockHash,
+        pallet: &str,
+        item: &str,
+        key: u64,
+    ) -> ChainResult<Option<Vec<u8>>>;
+}

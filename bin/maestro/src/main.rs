@@ -24,12 +24,13 @@ use tracing_subscriber::{EnvFilter, fmt};
 use async_graphql::{EmptyMutation, EmptySubscription, MergedObject, Schema};
 use maestro_core::error::IndexerError;
 use maestro_core::metrics::init_metrics;
-use maestro_core::ports::{BlockMode, BlockSource};
+use maestro_core::ports::{BlockMode, BlockSource, StorageReader};
 use maestro_core::services::{IndexerConfig, IndexerService};
 use maestro_graphql::{CoreQuery, ServerConfig, serve_with_shutdown};
 use maestro_handlers::ats::{AtsQuery, AtsStorage, PgAtsStorage};
 use maestro_handlers::balances::{BalancesQuery, BalancesStorage, PgBalancesStorage};
-use maestro_handlers::{AtsBundle, BalancesBundle, BundleRegistry};
+use maestro_handlers::midds::{MiddsQuery, MiddsStorage, PgMiddsStorage};
+use maestro_handlers::{AtsBundle, BalancesBundle, BundleRegistry, MiddsBundle};
 use maestro_storage::{Database, DatabaseConfig, PgRepositories};
 use maestro_substrate::{SubstrateClient, SubstrateClientConfig};
 
@@ -178,11 +179,41 @@ async fn main() -> Result<()> {
     info!("🗄️  Database ready (migrations applied)");
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 📦 HANDLER BUNDLES (register early for migrations and purge)
+    // 📡 SUBSTRATE CONNECTION (needed before bundle registration for MIDDS)
     // ─────────────────────────────────────────────────────────────────────────
+    info!("📡 Connecting to Substrate node...");
+    let substrate_config = SubstrateClientConfig {
+        ws_url: cli.ws_url.clone(),
+    };
+
+    let substrate_client = SubstrateClient::connect(substrate_config)
+        .await
+        .context("Failed to connect to Substrate node")?;
+
+    let substrate_client = Arc::new(substrate_client);
+
+    let genesis_hash = substrate_client.genesis_hash().await?;
+    let runtime_version = substrate_client.runtime_version().await?;
+    let finalized = substrate_client.finalized_head().await?;
+
+    info!(
+        genesis = %hex::encode(&genesis_hash.0[..8]),
+        runtime = runtime_version,
+        head = finalized.number,
+        "🔗 Chain connected"
+    );
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 📦 HANDLER BUNDLES
+    // ─────────────────────────────────────────────────────────────────────────
+    let storage_reader: Arc<dyn StorageReader> = substrate_client.clone();
     let mut bundle_registry = BundleRegistry::new();
     bundle_registry.register(Box::new(BalancesBundle::new(db.pool().clone())));
     bundle_registry.register(Box::new(AtsBundle::new(db.pool().clone())));
+    bundle_registry.register(Box::new(MiddsBundle::new(
+        db.pool().clone(),
+        storage_reader,
+    )));
 
     // Run bundle-specific migrations
     bundle_registry
@@ -208,31 +239,6 @@ async fn main() -> Result<()> {
 
     let indexer_repositories = Arc::new(PgRepositories::new(db.clone()));
     let graphql_repositories = Arc::new(PgRepositories::new(graphql_db.clone()));
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 📡 SUBSTRATE CONNECTION
-    // ─────────────────────────────────────────────────────────────────────────
-    info!("📡 Connecting to Substrate node...");
-    let substrate_config = SubstrateClientConfig {
-        ws_url: cli.ws_url.clone(),
-    };
-
-    let substrate_client = SubstrateClient::connect(substrate_config)
-        .await
-        .context("Failed to connect to Substrate node")?;
-
-    let substrate_client = Arc::new(substrate_client);
-
-    let genesis_hash = substrate_client.genesis_hash().await?;
-    let runtime_version = substrate_client.runtime_version().await?;
-    let finalized = substrate_client.finalized_head().await?;
-
-    info!(
-        genesis = %hex::encode(&genesis_hash.0[..8]),
-        runtime = runtime_version,
-        head = finalized.number,
-        "🔗 Chain connected"
-    );
 
     // Convert to handler registry for the indexer
     let handlers = Arc::new(bundle_registry.into_handler_registry());
@@ -267,17 +273,20 @@ async fn main() -> Result<()> {
         Arc::new(PgBalancesStorage::new(graphql_db.pool().clone()));
     let graphql_ats_storage: Arc<dyn AtsStorage> =
         Arc::new(PgAtsStorage::new(graphql_db.pool().clone()));
+    let graphql_midds_storage: Arc<dyn MiddsStorage> =
+        Arc::new(PgMiddsStorage::new(graphql_db.pool().clone()));
 
     // Compose the GraphQL schema from core + bundle queries
     // Includes DoS protection: depth limit (15), complexity limit (500)
     #[derive(MergedObject, Default)]
-    struct Query(CoreQuery, BalancesQuery, AtsQuery);
+    struct Query(CoreQuery, BalancesQuery, AtsQuery, MiddsQuery);
 
     let repos: Arc<dyn maestro_core::ports::Repositories> = graphql_repositories;
     let schema = Schema::build(Query::default(), EmptyMutation, EmptySubscription)
         .data(repos)
         .data(graphql_balances_storage)
         .data(graphql_ats_storage)
+        .data(graphql_midds_storage)
         .limit_depth(maestro_graphql::MAX_QUERY_DEPTH)
         .limit_complexity(maestro_graphql::MAX_QUERY_COMPLEXITY)
         .finish();

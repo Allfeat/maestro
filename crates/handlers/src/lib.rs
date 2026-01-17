@@ -48,6 +48,7 @@
 pub mod ats;
 pub mod balances;
 pub mod graphql_utils;
+pub mod midds;
 pub mod persistence;
 pub mod utils;
 
@@ -60,3 +61,4 @@ pub use registry::BundleRegistry;
 // Re-export bundles for convenience
 pub use ats::AtsBundle;
 pub use balances::BalancesBundle;
+pub use midds::MiddsBundle;

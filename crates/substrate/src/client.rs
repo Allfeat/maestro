@@ -15,6 +15,7 @@ use maestro_core::metrics::record_decode_error;
 use maestro_core::models::BlockHash;
 use maestro_core::ports::{
     BlockSource, FinalizedBlockStream, FinalizedHead, RawBlock, RawEvent, RawExtrinsic,
+    StorageReader,
 };
 
 /// Configuration for the Substrate client.
@@ -135,6 +136,93 @@ impl BlockSource for SubstrateClient {
     async fn runtime_version(&self) -> ChainResult<u32> {
         let version = self.client.runtime_version();
         Ok(version.spec_version)
+    }
+}
+
+#[async_trait]
+impl StorageReader for SubstrateClient {
+    async fn read_storage(
+        &self,
+        block_hash: &BlockHash,
+        key: &[u8],
+    ) -> ChainResult<Option<Vec<u8>>> {
+        let hash = subxt::utils::H256::from_slice(&block_hash.0);
+
+        let storage = self
+            .client
+            .storage()
+            .at(hash)
+            .fetch_raw(key)
+            .await
+            .map_err(|e| ChainError::RpcError(format!("Failed to fetch storage: {}", e)))?;
+
+        Ok(storage)
+    }
+
+    async fn read_storage_map(
+        &self,
+        block_hash: &BlockHash,
+        pallet: &str,
+        item: &str,
+        map_key: &[u8],
+    ) -> ChainResult<Option<Vec<u8>>> {
+        let hash = subxt::utils::H256::from_slice(&block_hash.0);
+
+        // Use subxt's dynamic storage API to construct the storage address.
+        // This uses the runtime metadata to determine the correct hasher,
+        // making it more robust than manual key construction.
+        let storage_query =
+            subxt::dynamic::storage(pallet, item, vec![subxt::dynamic::Value::from_bytes(map_key)]);
+
+        // Get the full storage address bytes from the query
+        let address_bytes = self
+            .client
+            .storage()
+            .address_bytes(&storage_query)
+            .map_err(|e| {
+                ChainError::RpcError(format!("Failed to construct storage address: {}", e))
+            })?;
+
+        // Fetch the raw storage value at this address
+        self.client
+            .storage()
+            .at(hash)
+            .fetch_raw(address_bytes)
+            .await
+            .map_err(|e| ChainError::RpcError(format!("Failed to fetch storage: {}", e)))
+    }
+
+    async fn read_storage_map_u64(
+        &self,
+        block_hash: &BlockHash,
+        pallet: &str,
+        item: &str,
+        key: u64,
+    ) -> ChainResult<Option<Vec<u8>>> {
+        let hash = subxt::utils::H256::from_slice(&block_hash.0);
+
+        // Use subxt's dynamic storage API with a proper u128 value.
+        // The dynamic API will use the runtime metadata to determine the correct hasher
+        // and encode the key appropriately.
+        let storage_query =
+            subxt::dynamic::storage(pallet, item, vec![subxt::dynamic::Value::u128(key as u128)]);
+
+        // Get the full storage address bytes from the query
+        let address_bytes = self
+            .client
+            .storage()
+            .address_bytes(&storage_query)
+            .map_err(|e| {
+                ChainError::RpcError(format!("Failed to construct storage address: {}", e))
+            })?;
+
+        // Fetch the raw storage value at this address
+        self.client
+            .storage()
+            .at(hash)
+            .fetch_raw(address_bytes)
+            .await
+            .map_err(|e| ChainError::RpcError(format!("Failed to fetch storage: {}", e)))
     }
 }
 
