@@ -47,8 +47,7 @@ mod tests {
 
     #[test]
     fn test_query_err_formats_message() {
-        let err: Result<(), sqlx::Error> =
-            Err(sqlx::Error::RowNotFound);
+        let err: Result<(), sqlx::Error> = Err(sqlx::Error::RowNotFound);
         let result = err.query_err("fetch block");
 
         match result {
@@ -62,8 +61,7 @@ mod tests {
 
     #[test]
     fn test_tx_err_formats_message() {
-        let err: Result<(), sqlx::Error> =
-            Err(sqlx::Error::RowNotFound);
+        let err: Result<(), sqlx::Error> = Err(sqlx::Error::RowNotFound);
         let result = err.tx_err("begin transaction");
 
         match result {
@@ -76,8 +74,7 @@ mod tests {
 
     #[test]
     fn test_conn_err_formats_message() {
-        let err: Result<(), sqlx::Error> =
-            Err(sqlx::Error::RowNotFound);
+        let err: Result<(), sqlx::Error> = Err(sqlx::Error::RowNotFound);
         let result = err.conn_err("connect to database");
 
         match result {
@@ -85,6 +82,30 @@ mod tests {
                 assert!(msg.starts_with("connect to database:"));
             }
             _ => panic!("Expected ConnectionError"),
+        }
+    }
+
+    #[test]
+    fn test_ok_result_passes_through() {
+        let ok: Result<i32, sqlx::Error> = Ok(42);
+        assert_eq!(ok.query_err("unused context").unwrap(), 42);
+    }
+
+    #[test]
+    fn test_ok_result_passes_through_tx() {
+        let ok: Result<String, sqlx::Error> = Ok("value".to_string());
+        assert_eq!(ok.tx_err("unused context").unwrap(), "value");
+    }
+
+    #[test]
+    fn test_context_preserved_in_error() {
+        let err: Result<(), sqlx::Error> = Err(sqlx::Error::RowNotFound);
+        let result = err.query_err("insert block row #123");
+
+        if let Err(StorageError::QueryError(msg)) = result {
+            assert!(msg.contains("insert block row #123"));
+        } else {
+            panic!("Expected QueryError with context");
         }
     }
 }

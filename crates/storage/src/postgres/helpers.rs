@@ -47,23 +47,73 @@ pub fn bytes_to_optional_hash32(
 mod tests {
     use super::*;
 
-    // Test critique: détecte les données corrompues (all zeros = hash invalide)
+    #[test]
+    fn test_bytes_to_hash32_success() {
+        let bytes = vec![1u8; 32];
+        let result = bytes_to_hash32(bytes, "test.hash");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), [1u8; 32]);
+    }
+
+    #[test]
+    fn test_bytes_to_hash32_wrong_length() {
+        let bad_bytes = vec![1u8; 16];
+        let result = bytes_to_hash32(bad_bytes, "block.parent_hash");
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("block.parent_hash"));
+        assert!(err.contains("expected 32"));
+        assert!(err.contains("got 16"));
+    }
+
+    #[test]
+    fn test_bytes_to_hash32_empty() {
+        let empty = vec![];
+        let result = bytes_to_hash32(empty, "test.field");
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("got 0"));
+    }
+
+    #[test]
+    fn test_strict_accepts_valid_hash() {
+        let valid = vec![1u8; 32];
+        let result = bytes_to_hash32_strict(valid, "block.hash");
+        assert!(result.is_ok());
+    }
+
     #[test]
     fn test_strict_rejects_zero_hash() {
-        // Un hash tout à zéro indique une corruption de données
         let zeros = vec![0u8; 32];
         let result = bytes_to_hash32_strict(zeros, "block.hash");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("corruption"));
     }
 
-    // Test critique: erreurs incluent le nom du champ pour debug
     #[test]
-    fn test_error_includes_field_name() {
-        let bad_bytes = vec![1u8; 16]; // mauvaise longueur
-        let result = bytes_to_hash32(bad_bytes, "block.parent_hash");
-        let err = result.unwrap_err().to_string();
-        assert!(err.contains("block.parent_hash"));
-        assert!(err.contains("expected 32"));
+    fn test_strict_rejects_wrong_length() {
+        let bad = vec![1u8; 31];
+        let result = bytes_to_hash32_strict(bad, "block.hash");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_optional_none() {
+        let result = bytes_to_optional_hash32(None, "block.author");
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn test_optional_some_valid() {
+        let bytes = vec![42u8; 32];
+        let result = bytes_to_optional_hash32(Some(bytes), "block.author");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Some([42u8; 32]));
+    }
+
+    #[test]
+    fn test_optional_some_invalid() {
+        let bad = vec![1u8; 10];
+        let result = bytes_to_optional_hash32(Some(bad), "block.author");
+        assert!(result.is_err());
     }
 }
