@@ -10,7 +10,7 @@ use maestro_core::ports::{
 };
 
 use super::database::Database;
-use super::helpers::{bytes_to_hash32_strict, bytes_to_optional_hash32};
+use super::helpers::{bytes_to_hash32, bytes_to_hash32_strict, bytes_to_optional_hash32};
 use super::SqlxResultExt;
 
 /// PostgreSQL implementation of BlockRepository.
@@ -260,10 +260,9 @@ impl BlockRow {
         Ok(Block {
             number: self.number as u64,
             hash: BlockHash(bytes_to_hash32_strict(self.hash, "block.hash")?),
-            parent_hash: BlockHash(bytes_to_hash32_strict(
-                self.parent_hash,
-                "block.parent_hash",
-            )?),
+            // parent_hash uses non-strict conversion because genesis block (block 0)
+            // has parent_hash = [0;32] which is legitimate (no parent exists)
+            parent_hash: BlockHash(bytes_to_hash32(self.parent_hash, "block.parent_hash")?),
             state_root: BlockHash(bytes_to_hash32_strict(self.state_root, "block.state_root")?),
             extrinsics_root: BlockHash(bytes_to_hash32_strict(
                 self.extrinsics_root,
