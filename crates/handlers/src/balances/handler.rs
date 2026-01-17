@@ -96,14 +96,10 @@ impl PalletHandler for BalancesHandler {
     ) -> DomainResult<HandlerOutputs> {
         let mut outputs = HandlerOutputs::new();
 
-        #[allow(clippy::single_match)]
-        match event.name.as_str() {
-            "Transfer" => {
-                if let Some(transfer) = self.process_transfer(event, block) {
-                    outputs.add("balances", "transfers", &transfer)?;
-                }
-            }
-            _ => {}
+        if event.name == "Transfer"
+            && let Some(transfer) = self.process_transfer(event, block)
+        {
+            outputs.add("balances", "transfers", &transfer)?;
         }
 
         Ok(outputs)
