@@ -1,0 +1,15 @@
+[package]
+name = "maestro-balances-schema"
+version = "0.1.0"
+edition = "2021"
+description = "Substrate Balances pallet GraphQL types (Transfer) for Maestro indexer clients"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/allfeat/indexer"
+keywords = ["graphql", "blockchain", "substrate", "balances"]
+categories = ["api-bindings", "web-programming"]
+
+[dependencies]
+maestro-graphql-schema = { version = "0.1.0", path = "../graphql-schema" }
+async-graphql = { version = "7.0", default-features = false, features = ["chrono"] }
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }

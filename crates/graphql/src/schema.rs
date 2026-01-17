@@ -5,11 +5,18 @@
 
 use std::sync::Arc;
 
-use async_graphql::{Context, EmptyMutation, EmptySubscription, Object, Result, Schema, SchemaBuilder};
-use chrono::{DateTime, Utc};
+use async_graphql::{
+    Context, EmptyMutation, EmptySubscription, Object, Result, Schema, SchemaBuilder,
+};
 
 use maestro_core::ports::{
     BlockFilter, EventFilter, ExtrinsicFilter, OrderDirection, Pagination, Repositories,
+};
+
+// Re-export schema types from the schema crate
+pub use maestro_graphql_schema::{
+    Block, BlockConnection, BlockEdge, Event, EventConnection, EventEdge, Extrinsic,
+    ExtrinsicConnection, ExtrinsicEdge, IndexerStatus, Order, PageInfo,
 };
 
 use crate::types::MaestroSchema;
@@ -47,29 +54,11 @@ pub fn build_core_schema<R: Repositories + 'static>(repositories: Arc<R>) -> Mae
 ///
 /// Use this to build a schema with merged query types from bundles.
 /// Remember to call `.limit_depth()` and `.limit_complexity()` before `.finish()`.
-///
-/// # Example
-///
-/// ```ignore
-/// use async_graphql::MergedObject;
-/// use maestro_graphql::{schema_builder, CoreQuery, MAX_QUERY_DEPTH, MAX_QUERY_COMPLEXITY};
-/// use maestro_handlers::balances::BalancesQuery;
-///
-/// #[derive(MergedObject, Default)]
-/// struct Query(CoreQuery, BalancesQuery);
-///
-/// let schema = schema_builder(repositories)
-///     .data(balances_storage)
-///     .limit_depth(MAX_QUERY_DEPTH)
-///     .limit_complexity(MAX_QUERY_COMPLEXITY)
-///     .finish();
-/// ```
 pub fn schema_builder<R: Repositories + 'static>(
     repositories: Arc<R>,
 ) -> SchemaBuilder<CoreQuery, EmptyMutation, EmptySubscription> {
     let repos: Arc<dyn Repositories> = repositories;
-    Schema::build(CoreQuery, EmptyMutation, EmptySubscription)
-        .data(repos)
+    Schema::build(CoreQuery, EmptyMutation, EmptySubscription).data(repos)
 }
 
 /// Build a schema with a merged query type.
@@ -123,7 +112,7 @@ impl CoreQuery {
         let repos = ctx.data::<Arc<dyn Repositories>>()?;
 
         let block = repos.blocks().get_block(number as u64).await?;
-        Ok(block.map(Block::from))
+        Ok(block.map(convert_block))
     }
 
     /// Get a block by hash.
@@ -137,7 +126,7 @@ impl CoreQuery {
         let hash_bytes = parse_hash(&hash)?;
         let block_hash = maestro_core::models::BlockHash(hash_bytes);
         let block = repos.blocks().get_block_by_hash(&block_hash).await?;
-        Ok(block.map(Block::from))
+        Ok(block.map(convert_block))
     }
 
     /// List blocks with pagination.
@@ -166,10 +155,10 @@ impl CoreQuery {
 
         let connection = repos
             .blocks()
-            .list_blocks(filter, pagination, order.into())
+            .list_blocks(filter, pagination, convert_order(order))
             .await?;
 
-        Ok(BlockConnection::from(connection))
+        Ok(convert_block_connection(connection))
     }
 
     /// Get an extrinsic by ID.
@@ -177,7 +166,7 @@ impl CoreQuery {
         let repos = ctx.data::<Arc<dyn Repositories>>()?;
 
         let ext = repos.extrinsics().get_extrinsic(&id).await?;
-        Ok(ext.map(Extrinsic::from))
+        Ok(ext.map(convert_extrinsic))
     }
 
     /// List extrinsics with pagination and filtering.
@@ -215,10 +204,10 @@ impl CoreQuery {
 
         let connection = repos
             .extrinsics()
-            .list_extrinsics(filter, pagination, order.into())
+            .list_extrinsics(filter, pagination, convert_order(order))
             .await?;
 
-        Ok(ExtrinsicConnection::from(connection))
+        Ok(convert_extrinsic_connection(connection))
     }
 
     /// Get an event by ID.
@@ -226,7 +215,7 @@ impl CoreQuery {
         let repos = ctx.data::<Arc<dyn Repositories>>()?;
 
         let event = repos.events().get_event(&id).await?;
-        Ok(event.map(Event::from))
+        Ok(event.map(convert_event))
     }
 
     /// List events with pagination and filtering.
@@ -262,10 +251,10 @@ impl CoreQuery {
 
         let connection = repos
             .events()
-            .list_events(filter, pagination, order.into())
+            .list_events(filter, pagination, convert_order(order))
             .await?;
 
-        Ok(EventConnection::from(connection))
+        Ok(convert_event_connection(connection))
     }
 
     /// List events for a specific block.
@@ -281,7 +270,7 @@ impl CoreQuery {
             .list_events_for_block(block_number as u64)
             .await?;
 
-        Ok(events.into_iter().map(Event::from).collect())
+        Ok(events.into_iter().map(convert_event).collect())
     }
 
     /// List extrinsics for a specific block.
@@ -297,198 +286,147 @@ impl CoreQuery {
             .list_extrinsics_for_block(block_number as u64)
             .await?;
 
-        Ok(exts.into_iter().map(Extrinsic::from).collect())
+        Ok(exts.into_iter().map(convert_extrinsic).collect())
     }
 }
 
 // -----------------------------------------------------------------------------
-// GraphQL Types
-// -----------------------------------------------------------------------------
-
-/// Ordering direction.
-#[derive(async_graphql::Enum, Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Order {
-    #[default]
-    Desc,
-    Asc,
-}
-
-impl From<Order> for OrderDirection {
-    fn from(order: Order) -> Self {
-        match order {
-            Order::Asc => OrderDirection::Asc,
-            Order::Desc => OrderDirection::Desc,
-        }
-    }
-}
-
-/// Indexer status.
-#[derive(async_graphql::SimpleObject)]
-pub struct IndexerStatus {
-    pub latest_indexed_block: Option<u64>,
-    pub last_updated: Option<DateTime<Utc>>,
-}
-
-/// Block type.
-#[derive(async_graphql::SimpleObject)]
-pub struct Block {
-    pub number: i64,
-    pub hash: String,
-    pub parent_hash: String,
-    pub state_root: String,
-    pub extrinsics_root: String,
-    pub author: Option<String>,
-    pub timestamp: Option<DateTime<Utc>>,
-    pub extrinsic_count: i32,
-    pub event_count: i32,
-    pub indexed_at: DateTime<Utc>,
-}
-
-impl From<maestro_core::models::Block> for Block {
-    fn from(b: maestro_core::models::Block) -> Self {
-        Self {
-            number: b.number as i64,
-            hash: to_hex(&b.hash.0),
-            parent_hash: to_hex(&b.parent_hash.0),
-            state_root: to_hex(&b.state_root.0),
-            extrinsics_root: to_hex(&b.extrinsics_root.0),
-            author: b.author.map(|a| to_hex(&a.0)),
-            timestamp: b.timestamp,
-            extrinsic_count: b.extrinsic_count as i32,
-            event_count: b.event_count as i32,
-            indexed_at: b.indexed_at,
-        }
-    }
-}
-
-/// Extrinsic type.
-#[derive(async_graphql::SimpleObject)]
-pub struct Extrinsic {
-    pub id: String,
-    pub block_number: i64,
-    pub block_hash: String,
-    pub index: i32,
-    pub pallet: String,
-    pub call: String,
-    pub signer: Option<String>,
-    pub success: bool,
-    pub error: Option<String>,
-    pub args: serde_json::Value,
-    pub tip: Option<String>,
-    pub nonce: Option<i32>,
-}
-
-impl From<maestro_core::models::Extrinsic> for Extrinsic {
-    fn from(e: maestro_core::models::Extrinsic) -> Self {
-        Self {
-            id: e.id,
-            block_number: e.block_number as i64,
-            block_hash: to_hex(&e.block_hash.0),
-            index: e.index as i32,
-            pallet: e.pallet,
-            call: e.call,
-            signer: e.signer.map(|s| to_hex(&s.0)),
-            success: matches!(e.status, maestro_core::models::ExtrinsicStatus::Success),
-            error: e.error,
-            args: e.args,
-            tip: e.tip.map(|t| t.to_string()),
-            nonce: e.nonce.map(|n| n as i32),
-        }
-    }
-}
-
-/// Event type.
-#[derive(async_graphql::SimpleObject)]
-pub struct Event {
-    pub id: String,
-    pub block_number: i64,
-    pub block_hash: String,
-    pub index: i32,
-    pub extrinsic_index: Option<i32>,
-    pub pallet: String,
-    pub name: String,
-    pub data: serde_json::Value,
-}
-
-impl From<maestro_core::models::Event> for Event {
-    fn from(e: maestro_core::models::Event) -> Self {
-        Self {
-            id: e.id,
-            block_number: e.block_number as i64,
-            block_hash: to_hex(&e.block_hash.0),
-            index: e.index as i32,
-            extrinsic_index: e.extrinsic_index.map(|i| i as i32),
-            pallet: e.pallet,
-            name: e.name,
-            data: e.data,
-        }
-    }
-}
-
-// -----------------------------------------------------------------------------
-// Connection Types (Relay-style pagination)
-// -----------------------------------------------------------------------------
-
-#[derive(async_graphql::SimpleObject)]
-pub struct PageInfo {
-    pub has_next_page: bool,
-    pub has_previous_page: bool,
-    pub start_cursor: Option<String>,
-    pub end_cursor: Option<String>,
-}
-
-/// Generate Relay-style connection types (Edge + Connection) with From impl.
-macro_rules! define_connection {
-    ($node:ty, $core_model:ty, $edge:ident, $connection:ident) => {
-        #[derive(async_graphql::SimpleObject)]
-        pub struct $edge {
-            pub node: $node,
-            pub cursor: String,
-        }
-
-        #[derive(async_graphql::SimpleObject)]
-        pub struct $connection {
-            pub edges: Vec<$edge>,
-            pub page_info: PageInfo,
-            pub total_count: Option<i64>,
-        }
-
-        impl From<maestro_core::ports::Connection<$core_model>> for $connection {
-            fn from(conn: maestro_core::ports::Connection<$core_model>) -> Self {
-                Self {
-                    edges: conn
-                        .edges
-                        .into_iter()
-                        .map(|e| $edge {
-                            node: <$node>::from(e.node),
-                            cursor: e.cursor.value,
-                        })
-                        .collect(),
-                    page_info: PageInfo {
-                        has_next_page: conn.page_info.has_next_page,
-                        has_previous_page: conn.page_info.has_previous_page,
-                        start_cursor: conn.page_info.start_cursor.map(|c| c.value),
-                        end_cursor: conn.page_info.end_cursor.map(|c| c.value),
-                    },
-                    total_count: conn.total_count,
-                }
-            }
-        }
-    };
-}
-
-define_connection!(Block, maestro_core::models::Block, BlockEdge, BlockConnection);
-define_connection!(Extrinsic, maestro_core::models::Extrinsic, ExtrinsicEdge, ExtrinsicConnection);
-define_connection!(Event, maestro_core::models::Event, EventEdge, EventConnection);
-
-// -----------------------------------------------------------------------------
-// Helpers & Validation
+// Conversion Functions
 // -----------------------------------------------------------------------------
 
 /// Convert bytes to 0x-prefixed hex string.
 fn to_hex(bytes: &[u8]) -> String {
     format!("0x{}", hex::encode(bytes))
 }
+
+/// Convert Order enum to OrderDirection.
+pub fn convert_order(order: Order) -> OrderDirection {
+    match order {
+        Order::Asc => OrderDirection::Asc,
+        Order::Desc => OrderDirection::Desc,
+    }
+}
+
+/// Convert core Block model to GraphQL Block type.
+pub fn convert_block(b: maestro_core::models::Block) -> Block {
+    Block {
+        number: b.number as i64,
+        hash: to_hex(&b.hash.0),
+        parent_hash: to_hex(&b.parent_hash.0),
+        state_root: to_hex(&b.state_root.0),
+        extrinsics_root: to_hex(&b.extrinsics_root.0),
+        author: b.author.map(|a| to_hex(&a.0)),
+        timestamp: b.timestamp,
+        extrinsic_count: b.extrinsic_count as i32,
+        event_count: b.event_count as i32,
+        indexed_at: b.indexed_at,
+    }
+}
+
+/// Convert core Extrinsic model to GraphQL Extrinsic type.
+pub fn convert_extrinsic(e: maestro_core::models::Extrinsic) -> Extrinsic {
+    Extrinsic {
+        id: e.id,
+        block_number: e.block_number as i64,
+        block_hash: to_hex(&e.block_hash.0),
+        index: e.index as i32,
+        pallet: e.pallet,
+        call: e.call,
+        signer: e.signer.map(|s| to_hex(&s.0)),
+        success: matches!(e.status, maestro_core::models::ExtrinsicStatus::Success),
+        error: e.error,
+        args: e.args,
+        tip: e.tip.map(|t| t.to_string()),
+        nonce: e.nonce.map(|n| n as i32),
+    }
+}
+
+/// Convert core Event model to GraphQL Event type.
+pub fn convert_event(e: maestro_core::models::Event) -> Event {
+    Event {
+        id: e.id,
+        block_number: e.block_number as i64,
+        block_hash: to_hex(&e.block_hash.0),
+        index: e.index as i32,
+        extrinsic_index: e.extrinsic_index.map(|i| i as i32),
+        pallet: e.pallet,
+        name: e.name,
+        data: e.data,
+    }
+}
+
+/// Convert core Block connection to GraphQL BlockConnection.
+pub fn convert_block_connection(
+    conn: maestro_core::ports::Connection<maestro_core::models::Block>,
+) -> BlockConnection {
+    BlockConnection {
+        edges: conn
+            .edges
+            .into_iter()
+            .map(|e| BlockEdge {
+                node: convert_block(e.node),
+                cursor: e.cursor.value,
+            })
+            .collect(),
+        page_info: PageInfo {
+            has_next_page: conn.page_info.has_next_page,
+            has_previous_page: conn.page_info.has_previous_page,
+            start_cursor: conn.page_info.start_cursor.map(|c| c.value),
+            end_cursor: conn.page_info.end_cursor.map(|c| c.value),
+        },
+        total_count: conn.total_count,
+    }
+}
+
+/// Convert core Extrinsic connection to GraphQL ExtrinsicConnection.
+pub fn convert_extrinsic_connection(
+    conn: maestro_core::ports::Connection<maestro_core::models::Extrinsic>,
+) -> ExtrinsicConnection {
+    ExtrinsicConnection {
+        edges: conn
+            .edges
+            .into_iter()
+            .map(|e| ExtrinsicEdge {
+                node: convert_extrinsic(e.node),
+                cursor: e.cursor.value,
+            })
+            .collect(),
+        page_info: PageInfo {
+            has_next_page: conn.page_info.has_next_page,
+            has_previous_page: conn.page_info.has_previous_page,
+            start_cursor: conn.page_info.start_cursor.map(|c| c.value),
+            end_cursor: conn.page_info.end_cursor.map(|c| c.value),
+        },
+        total_count: conn.total_count,
+    }
+}
+
+/// Convert core Event connection to GraphQL EventConnection.
+pub fn convert_event_connection(
+    conn: maestro_core::ports::Connection<maestro_core::models::Event>,
+) -> EventConnection {
+    EventConnection {
+        edges: conn
+            .edges
+            .into_iter()
+            .map(|e| EventEdge {
+                node: convert_event(e.node),
+                cursor: e.cursor.value,
+            })
+            .collect(),
+        page_info: PageInfo {
+            has_next_page: conn.page_info.has_next_page,
+            has_previous_page: conn.page_info.has_previous_page,
+            start_cursor: conn.page_info.start_cursor.map(|c| c.value),
+            end_cursor: conn.page_info.end_cursor.map(|c| c.value),
+        },
+        total_count: conn.total_count,
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Helpers & Validation
+// -----------------------------------------------------------------------------
 
 /// Maximum length for hash strings (64 hex chars + "0x" prefix).
 const MAX_HASH_LENGTH: usize = 66;
@@ -558,15 +496,10 @@ fn validate_pagination_first(first: Option<i32>) -> i32 {
 mod tests {
     use super::*;
 
-    // Tests de validation critiques - protègent contre les injections/DoS
-
     #[test]
     fn test_parse_hash_rejects_invalid_input() {
-        // Trop long (DoS prevention)
         assert!(parse_hash(&"ab".repeat(100)).is_err());
-        // Caractères non-hex (injection prevention)
         assert!(parse_hash("0x<script>alert(1)</script>").is_err());
-        // Mauvaise longueur
         assert!(parse_hash(&"ab".repeat(16)).is_err());
     }
 
@@ -581,24 +514,17 @@ mod tests {
 
     #[test]
     fn test_validate_filter_string_boundaries() {
-        // Vide = erreur (évite les requêtes inutiles)
         assert!(validate_filter_string(&Some("".into()), "x").is_err());
-        // Trop long = erreur (DoS prevention)
         assert!(validate_filter_string(&Some("x".repeat(200)), "x").is_err());
-        // None = OK (optionnel)
         assert!(validate_filter_string(&None, "x").is_ok());
     }
 
     #[test]
     fn test_pagination_clamping() {
-        // Valeurs négatives/zéro clampées à 1
         assert_eq!(validate_pagination_first(Some(-100)), 1);
         assert_eq!(validate_pagination_first(Some(0)), 1);
-        // Valeurs trop grandes clampées à MAX
         assert_eq!(validate_pagination_first(Some(10000)), MAX_PAGE_SIZE);
     }
-
-    // Test de conversion critique - vérifie le format de sortie GraphQL
 
     #[test]
     fn test_extrinsic_status_conversion() {
@@ -620,8 +546,7 @@ mod tests {
             nonce: None,
         };
 
-        // Vérifie que le mapping success est correct
-        assert!(Extrinsic::from(make_ext(ExtrinsicStatus::Success)).success);
-        assert!(!Extrinsic::from(make_ext(ExtrinsicStatus::Failed)).success);
+        assert!(convert_extrinsic(make_ext(ExtrinsicStatus::Success)).success);
+        assert!(!convert_extrinsic(make_ext(ExtrinsicStatus::Failed)).success);
     }
 }

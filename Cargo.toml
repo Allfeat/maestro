@@ -5,6 +5,9 @@ members = [
     "crates/substrate",
     "crates/storage",
     "crates/graphql",
+    "crates/graphql-schema",
+    "crates/balances-schema",
+    "crates/ats-schema",
     "crates/handlers",
     "bin/maestro"
 ]
@@ -78,6 +81,9 @@ maestro-core = { path = "crates/core" }
 maestro-substrate = { path = "crates/substrate" }
 maestro-storage = { path = "crates/storage" }
 maestro-graphql = { path = "crates/graphql" }
+maestro-graphql-schema = { path = "crates/graphql-schema" }
+maestro-balances-schema = { path = "crates/balances-schema" }
+maestro-ats-schema = { path = "crates/ats-schema" }
 maestro-handlers = { path = "crates/handlers" }
 
 [profile.release]

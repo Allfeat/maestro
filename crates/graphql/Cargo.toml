@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 maestro-core.workspace = true
 maestro-storage.workspace = true
+maestro-graphql-schema.workspace = true
 
 # Async
 tokio.workspace = true

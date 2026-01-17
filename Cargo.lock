@@ -2210,6 +2210,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "maestro-ats-schema"
+version = "0.1.0"
+dependencies = [
+ "async-graphql",
+ "chrono",
+ "maestro-graphql-schema",
+ "serde",
+]
+
+[[package]]
+name = "maestro-balances-schema"
+version = "0.1.0"
+dependencies = [
+ "async-graphql",
+ "chrono",
+ "maestro-graphql-schema",
+ "serde",
+]
+
+[[package]]
 name = "maestro-core"
 version = "0.1.0"
 dependencies = [
@@ -2239,12 +2259,23 @@ dependencies = [
  "chrono",
  "hex",
  "maestro-core",
+ "maestro-graphql-schema",
  "maestro-storage",
  "serde",
  "serde_json",
  "tokio",
  "tower-http",
  "tracing",
+]
+
+[[package]]
+name = "maestro-graphql-schema"
+version = "0.1.0"
+dependencies = [
+ "async-graphql",
+ "chrono",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

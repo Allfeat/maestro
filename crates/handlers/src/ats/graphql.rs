@@ -6,7 +6,7 @@ use async_graphql::{Context, Object, Result};
 use chrono::{DateTime, Utc};
 
 use maestro_core::ports::Pagination;
-use maestro_graphql::{Order, PageInfo};
+use maestro_graphql::{convert_order, Order, PageInfo};
 
 use super::models::{
     AtsOwnershipTransfer as AtsOwnershipTransferModel, AtsVerificationKeyUpdate as AtsVkUpdateModel,
@@ -291,7 +291,7 @@ impl AtsQuery {
             ..Default::default()
         };
 
-        let connection = storage.list_ats_works(filter, pagination, order.into()).await?;
+        let connection = storage.list_ats_works(filter, pagination, convert_order(order)).await?;
         Ok(AtsWorkConnection::from(connection))
     }
 
@@ -371,7 +371,7 @@ impl AtsQuery {
             ..Default::default()
         };
 
-        let connection = storage.list_transfers(filter, pagination, order.into()).await?;
+        let connection = storage.list_transfers(filter, pagination, convert_order(order)).await?;
         Ok(AtsOwnershipTransferConnection::from(connection))
     }
 

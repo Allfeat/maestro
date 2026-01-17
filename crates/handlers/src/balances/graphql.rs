@@ -6,7 +6,7 @@ use async_graphql::{Context, Object, Result};
 use chrono::{DateTime, Utc};
 
 use maestro_core::ports::Pagination;
-use maestro_graphql::{Order, PageInfo};
+use maestro_graphql::{convert_order, Order, PageInfo};
 
 use super::models::Transfer as TransferModel;
 use super::storage::{BalancesStorage, TransferFilter};
@@ -137,7 +137,7 @@ impl BalancesQuery {
         };
 
         let connection = balances
-            .list_transfers(filter, pagination, order.into())
+            .list_transfers(filter, pagination, convert_order(order))
             .await?;
 
         Ok(TransferConnection::from(connection))
