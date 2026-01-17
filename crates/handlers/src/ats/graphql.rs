@@ -13,53 +13,7 @@ use super::models::{
     AtsVersion as AtsVersionModel, AtsWork as AtsWorkModel,
 };
 use super::storage::{AtsStorage, AtsTransferFilter, AtsWorkFilter};
-
-// -----------------------------------------------------------------------------
-// Helper functions
-// -----------------------------------------------------------------------------
-
-/// Maximum length for hash strings (64 hex chars + "0x" prefix).
-const MAX_HASH_LENGTH: usize = 66;
-/// Maximum page size for pagination.
-const MAX_PAGE_SIZE: i32 = 100;
-/// Default page size for pagination.
-const DEFAULT_PAGE_SIZE: i32 = 20;
-
-/// Parse and validate a hash string.
-fn parse_hash(s: &str) -> Result<[u8; 32]> {
-    if s.len() > MAX_HASH_LENGTH {
-        return Err(async_graphql::Error::new(format!(
-            "Hash too long: maximum {} characters allowed",
-            MAX_HASH_LENGTH
-        )));
-    }
-
-    let s = s.strip_prefix("0x").unwrap_or(s);
-
-    if !s.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err(async_graphql::Error::new(
-            "Invalid hash: must contain only hexadecimal characters",
-        ));
-    }
-
-    let bytes =
-        hex::decode(s).map_err(|e| async_graphql::Error::new(format!("Invalid hash: {}", e)))?;
-
-    bytes
-        .try_into()
-        .map_err(|_| async_graphql::Error::new("Hash must be exactly 32 bytes (64 hex characters)"))
-}
-
-/// Parse and validate an account address.
-fn parse_account(s: &str) -> Result<maestro_core::models::AccountId> {
-    let bytes = parse_hash(s)?;
-    Ok(maestro_core::models::AccountId(bytes))
-}
-
-/// Validate and normalize pagination first parameter.
-fn validate_pagination_first(first: Option<i32>) -> i32 {
-    first.unwrap_or(DEFAULT_PAGE_SIZE).clamp(1, MAX_PAGE_SIZE)
-}
+use crate::graphql_utils::{parse_account, parse_hash, validate_pagination_first};
 
 // -----------------------------------------------------------------------------
 // GraphQL Types

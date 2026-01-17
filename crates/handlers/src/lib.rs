@@ -47,6 +47,7 @@
 
 pub mod ats;
 pub mod balances;
+pub mod graphql_utils;
 pub mod utils;
 
 mod bundle;
