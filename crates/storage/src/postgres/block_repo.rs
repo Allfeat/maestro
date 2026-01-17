@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use sqlx::PgPool;
 
-use maestro_core::error::{StorageError, StorageResult};
+use maestro_core::error::StorageResult;
 use maestro_core::models::{Block, BlockHash};
 use maestro_core::ports::{
     BlockFilter, BlockRepository, Connection, Cursor, Edge, OrderDirection, PageInfo, Pagination,
@@ -11,6 +11,7 @@ use maestro_core::ports::{
 
 use super::database::Database;
 use super::helpers::{bytes_to_hash32_strict, bytes_to_optional_hash32};
+use super::SqlxResultExt;
 
 /// PostgreSQL implementation of BlockRepository.
 pub struct PgBlockRepository {
@@ -32,11 +33,7 @@ impl BlockRepository for PgBlockRepository {
             return Ok(());
         }
 
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| StorageError::TransactionError(e.to_string()))?;
+        let mut tx = self.pool.begin().await.tx_err("begin insert_blocks")?;
 
         for block in blocks {
             sqlx::query(
@@ -70,12 +67,10 @@ impl BlockRepository for PgBlockRepository {
             .bind(block.indexed_at)
             .execute(&mut *tx)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .query_err("insert block row")?;
         }
 
-        tx.commit()
-            .await
-            .map_err(|e| StorageError::TransactionError(e.to_string()))?;
+        tx.commit().await.tx_err("commit insert_blocks")?;
 
         Ok(())
     }
@@ -92,7 +87,7 @@ impl BlockRepository for PgBlockRepository {
         .bind(number as i64)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .query_err("get block by number")?;
 
         row.map(BlockRow::into_block).transpose()
     }
@@ -109,7 +104,7 @@ impl BlockRepository for PgBlockRepository {
         .bind(&hash.0[..])
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .query_err("get block by hash")?;
 
         row.map(BlockRow::into_block).transpose()
     }
@@ -185,7 +180,7 @@ impl BlockRepository for PgBlockRepository {
         let rows: Vec<BlockRow> = query_builder
             .fetch_all(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .query_err("list blocks")?;
 
         let has_more = rows.len() > limit as usize;
         let blocks: Vec<Block> = rows
@@ -229,7 +224,7 @@ impl BlockRepository for PgBlockRepository {
         let row: (Option<i64>,) = sqlx::query_as("SELECT MAX(number) FROM blocks")
             .fetch_one(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .query_err("get latest block number")?;
 
         Ok(row.0.map(|n| n as u64))
     }
@@ -239,7 +234,7 @@ impl BlockRepository for PgBlockRepository {
             .bind(from_number as i64)
             .execute(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .query_err("delete blocks from")?;
 
         Ok(result.rows_affected())
     }

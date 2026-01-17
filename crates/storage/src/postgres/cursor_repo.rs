@@ -3,12 +3,13 @@
 use async_trait::async_trait;
 use sqlx::PgPool;
 
-use maestro_core::error::{StorageError, StorageResult};
+use maestro_core::error::StorageResult;
 use maestro_core::models::{BlockHash, IndexerCursor};
 use maestro_core::ports::CursorRepository;
 
 use super::database::Database;
 use super::helpers::bytes_to_hash32;
+use super::SqlxResultExt;
 
 /// PostgreSQL implementation of CursorRepository.
 pub struct PgCursorRepository {
@@ -36,7 +37,7 @@ impl CursorRepository for PgCursorRepository {
         .bind(chain_id)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .query_err("get cursor by chain_id")?;
 
         row.map(CursorRow::into_cursor).transpose()
     }
@@ -51,7 +52,7 @@ impl CursorRepository for PgCursorRepository {
         )
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .query_err("get any cursor")?;
 
         row.map(CursorRow::into_cursor).transpose()
     }
@@ -73,7 +74,7 @@ impl CursorRepository for PgCursorRepository {
         .bind(cursor.updated_at)
         .execute(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .query_err("set cursor")?;
 
         Ok(())
     }

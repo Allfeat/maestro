@@ -4,7 +4,9 @@ use sqlx::postgres::{PgPool, PgPoolOptions};
 use std::time::Duration;
 use tracing::{debug, instrument};
 
-use maestro_core::error::{StorageError, StorageResult};
+use maestro_core::error::StorageResult;
+
+use super::SqlxResultExt;
 
 /// Database configuration.
 #[derive(Debug, Clone)]
@@ -95,7 +97,7 @@ impl Database {
             .max_lifetime(Some(config.max_lifetime))
             .connect(&config.url)
             .await
-            .map_err(|e| StorageError::ConnectionError(e.to_string()))?;
+            .conn_err("connect to database")?;
 
         debug!("Connection pool created");
 
@@ -109,17 +111,17 @@ impl Database {
 
     /// Run database migrations.
     #[instrument(skip(self))]
-    pub async fn migrate(&self) -> StorageResult<()> {
+    pub async fn migrate(&self) -> StorageResult<Self> {
         debug!("Running migrations");
 
         sqlx::migrate!("./migrations")
             .run(&self.pool)
             .await
-            .map_err(|e| StorageError::MigrationError(e.to_string()))?;
+            .map_err(|e| maestro_core::error::StorageError::MigrationError(e.to_string()))?;
 
         debug!("Migrations completed");
 
-        Ok(())
+        Ok(self.clone())
     }
 
     /// Check if the database connection is healthy.
@@ -148,17 +150,17 @@ impl Database {
         let block_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM blocks")
             .fetch_one(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .query_err("count blocks for purge")?;
 
         let extrinsic_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM extrinsics")
             .fetch_one(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .query_err("count extrinsics for purge")?;
 
         let event_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM events")
             .fetch_one(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .query_err("count events for purge")?;
 
         // TRUNCATE CASCADE will handle foreign key relationships
         // This removes data from: blocks, extrinsics, events, and any bundle tables
@@ -166,7 +168,7 @@ impl Database {
         sqlx::query("TRUNCATE blocks CASCADE")
             .execute(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .query_err("truncate blocks cascade")?;
 
         debug!("Truncated blocks (cascade to extrinsics, events, transfers)");
 
@@ -174,7 +176,7 @@ impl Database {
         sqlx::query("TRUNCATE indexer_cursor")
             .execute(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .query_err("truncate indexer_cursor")?;
 
         debug!("Truncated indexer cursor");
 

@@ -3,13 +3,14 @@
 use async_trait::async_trait;
 use sqlx::PgPool;
 
-use maestro_core::error::{StorageError, StorageResult};
+use maestro_core::error::StorageResult;
 use maestro_core::models::{BlockHash, Event};
 use maestro_core::ports::{
     Connection, Cursor, Edge, EventFilter, EventRepository, OrderDirection, PageInfo, Pagination,
 };
 
 use super::helpers::bytes_to_hash32;
+use super::SqlxResultExt;
 
 // =============================================================================
 // Repository Implementation
@@ -33,11 +34,7 @@ impl EventRepository for PgEventRepository {
             return Ok(());
         }
 
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| StorageError::TransactionError(e.to_string()))?;
+        let mut tx = self.pool.begin().await.tx_err("begin insert_events")?;
 
         for event in events {
             sqlx::query(
@@ -61,12 +58,10 @@ impl EventRepository for PgEventRepository {
             .bind(&event.topics)
             .execute(&mut *tx)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .query_err("insert event row")?;
         }
 
-        tx.commit()
-            .await
-            .map_err(|e| StorageError::TransactionError(e.to_string()))?;
+        tx.commit().await.tx_err("commit insert_events")?;
 
         Ok(())
     }
@@ -83,7 +78,7 @@ impl EventRepository for PgEventRepository {
         .bind(id)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .query_err("get event by id")?;
 
         row.map(EventRow::into_event).transpose()
     }
@@ -101,7 +96,7 @@ impl EventRepository for PgEventRepository {
         .bind(block_number as i64)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .query_err("list events for block")?;
 
         rows.into_iter().map(EventRow::into_event).collect()
     }
@@ -124,7 +119,7 @@ impl EventRepository for PgEventRepository {
         .bind(extrinsic_index as i32)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .query_err("list events for extrinsic")?;
 
         rows.into_iter().map(EventRow::into_event).collect()
     }
@@ -192,7 +187,7 @@ impl EventRepository for PgEventRepository {
             sqlx::query_as(&query)
                 .fetch_all(&self.pool)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?
+                .query_err("list events (no filter)")?
         } else {
             let mut q = sqlx::query_as::<_, EventRow>(&query);
             if let Some(bn) = filter.block_number {
@@ -209,7 +204,7 @@ impl EventRepository for PgEventRepository {
             }
             q.fetch_all(&self.pool)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?
+                .query_err("list events (with filter)")?
         };
 
         let has_more = rows.len() > limit as usize;
@@ -246,7 +241,7 @@ impl EventRepository for PgEventRepository {
             .bind(from_block as i64)
             .execute(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .query_err("delete events from")?;
 
         Ok(result.rows_affected())
     }

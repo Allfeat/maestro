@@ -22,9 +22,12 @@
 mod block_repo;
 mod cursor_repo;
 mod database;
+mod error_ext;
 mod event_repo;
 mod extrinsic_repo;
 mod helpers;
+
+pub(crate) use error_ext::SqlxResultExt;
 
 pub use block_repo::PgBlockRepository;
 pub use cursor_repo::PgCursorRepository;
@@ -36,7 +39,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use maestro_core::error::{StorageError, StorageResult};
+use maestro_core::error::StorageResult;
 use maestro_core::models::ExtrinsicStatus;
 use maestro_core::ports::{
     BlockData, BlockRepository, CursorRepository, EventRepository, ExtrinsicRepository,
@@ -97,7 +100,7 @@ impl Repositories for PgRepositories {
             .pool()
             .begin()
             .await
-            .map_err(|e| StorageError::TransactionError(e.to_string()))?;
+            .tx_err("begin persist_block_atomic")?;
 
         // Insert block
         sqlx::query(
@@ -131,7 +134,7 @@ impl Repositories for PgRepositories {
         .bind(data.block.indexed_at)
         .execute(&mut *tx)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .query_err("insert block")?;
 
         // Insert extrinsics
         for ext in data.extrinsics {
@@ -160,7 +163,7 @@ impl Repositories for PgRepositories {
             .bind(ext.nonce.map(|n| n as i32))
             .execute(&mut *tx)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .query_err("insert extrinsic")?;
         }
 
         // Insert events
@@ -186,7 +189,7 @@ impl Repositories for PgRepositories {
             .bind(&event.topics)
             .execute(&mut *tx)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .query_err("insert event")?;
         }
 
         // Update cursor
@@ -206,11 +209,9 @@ impl Repositories for PgRepositories {
         .bind(data.cursor.updated_at)
         .execute(&mut *tx)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .query_err("update cursor")?;
 
-        tx.commit()
-            .await
-            .map_err(|e| StorageError::TransactionError(e.to_string()))?;
+        tx.commit().await.tx_err("commit persist_block_atomic")?;
 
         Ok(())
     }
@@ -225,28 +226,28 @@ impl Repositories for PgRepositories {
             .pool()
             .begin()
             .await
-            .map_err(|e| StorageError::TransactionError(e.to_string()))?;
+            .tx_err("begin delete_from_block_atomic")?;
 
         // Delete events first (child data)
         sqlx::query("DELETE FROM events WHERE block_number >= $1")
             .bind(from_number as i64)
             .execute(&mut *tx)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .query_err("delete events")?;
 
         // Delete extrinsics
         sqlx::query("DELETE FROM extrinsics WHERE block_number >= $1")
             .bind(from_number as i64)
             .execute(&mut *tx)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .query_err("delete extrinsics")?;
 
         // Delete blocks
         let result = sqlx::query("DELETE FROM blocks WHERE number >= $1")
             .bind(from_number as i64)
             .execute(&mut *tx)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .query_err("delete blocks")?;
 
         let blocks_deleted = result.rows_affected();
 
@@ -258,7 +259,7 @@ impl Repositories for PgRepositories {
                     .bind((from_number - 1) as i64)
                     .fetch_optional(&mut *tx)
                     .await
-                    .map_err(|e| StorageError::QueryError(e.to_string()))?;
+                    .query_err("fetch previous block hash")?;
 
             if let Some((hash,)) = prev_block {
                 sqlx::query(
@@ -273,14 +274,14 @@ impl Repositories for PgRepositories {
                 .bind(chain_id)
                 .execute(&mut *tx)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?;
+                .query_err("update cursor to previous block")?;
             } else {
                 // No previous block, delete cursor
                 sqlx::query("DELETE FROM indexer_cursor WHERE chain_id = $1")
                     .bind(chain_id)
                     .execute(&mut *tx)
                     .await
-                    .map_err(|e| StorageError::QueryError(e.to_string()))?;
+                    .query_err("delete cursor (no previous block)")?;
             }
         } else {
             // Deleting from genesis, clear cursor
@@ -288,12 +289,12 @@ impl Repositories for PgRepositories {
                 .bind(chain_id)
                 .execute(&mut *tx)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?;
+                .query_err("delete cursor (from genesis)")?;
         }
 
         tx.commit()
             .await
-            .map_err(|e| StorageError::TransactionError(e.to_string()))?;
+            .tx_err("commit delete_from_block_atomic")?;
 
         Ok(blocks_deleted)
     }

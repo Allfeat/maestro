@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use sqlx::PgPool;
 
-use maestro_core::error::{StorageError, StorageResult};
+use maestro_core::error::StorageResult;
 use maestro_core::models::{AccountId, BlockHash, Extrinsic, ExtrinsicStatus};
 use maestro_core::ports::{
     Connection, Cursor, Edge, ExtrinsicFilter, ExtrinsicRepository, OrderDirection, PageInfo,
@@ -11,6 +11,7 @@ use maestro_core::ports::{
 };
 
 use super::helpers::bytes_to_hash32;
+use super::SqlxResultExt;
 
 // =============================================================================
 // Repository Implementation
@@ -38,7 +39,7 @@ impl ExtrinsicRepository for PgExtrinsicRepository {
             .pool
             .begin()
             .await
-            .map_err(|e| StorageError::TransactionError(e.to_string()))?;
+            .tx_err("begin insert_extrinsics")?;
 
         for ext in extrinsics {
             sqlx::query(
@@ -66,12 +67,10 @@ impl ExtrinsicRepository for PgExtrinsicRepository {
             .bind(ext.nonce.map(|n| n as i32))
             .execute(&mut *tx)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .query_err("insert extrinsic row")?;
         }
 
-        tx.commit()
-            .await
-            .map_err(|e| StorageError::TransactionError(e.to_string()))?;
+        tx.commit().await.tx_err("commit insert_extrinsics")?;
 
         Ok(())
     }
@@ -88,7 +87,7 @@ impl ExtrinsicRepository for PgExtrinsicRepository {
         .bind(id)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .query_err("get extrinsic by id")?;
 
         row.map(ExtrinsicRow::into_extrinsic).transpose()
     }
@@ -106,7 +105,7 @@ impl ExtrinsicRepository for PgExtrinsicRepository {
         .bind(block_number as i64)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .query_err("list extrinsics for block")?;
 
         rows.into_iter()
             .map(ExtrinsicRow::into_extrinsic)
@@ -180,7 +179,7 @@ impl ExtrinsicRepository for PgExtrinsicRepository {
             sqlx::query_as(&query)
                 .fetch_all(&self.pool)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?
+                .query_err("list extrinsics (no filter)")?
         } else {
             let mut q = sqlx::query_as::<_, ExtrinsicRow>(&query);
             if let Some(bn) = filter.block_number {
@@ -200,7 +199,7 @@ impl ExtrinsicRepository for PgExtrinsicRepository {
             }
             q.fetch_all(&self.pool)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?
+                .query_err("list extrinsics (with filter)")?
         };
 
         let has_more = rows.len() > limit as usize;
@@ -237,7 +236,7 @@ impl ExtrinsicRepository for PgExtrinsicRepository {
             .bind(from_block as i64)
             .execute(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .query_err("delete extrinsics from")?;
 
         Ok(result.rows_affected())
     }
