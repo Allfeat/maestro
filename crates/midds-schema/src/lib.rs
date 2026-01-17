@@ -20,6 +20,7 @@ pub use maestro_graphql_schema::PageInfo;
 
 /// A party identifier (IPI, ISNI, or both).
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PartyId {
     /// IPI (Interested Party Information) number, if available.
     pub ipi: Option<i64>,
@@ -29,6 +30,7 @@ pub struct PartyId {
 
 /// A creator of a musical work.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Creator {
     /// The party identifier.
     pub party_id: PartyId,
@@ -38,6 +40,7 @@ pub struct Creator {
 
 /// A date (year, month, day).
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Date {
     /// Year component.
     pub year: i32,
@@ -53,6 +56,7 @@ pub struct Date {
 
 /// A musical work (composition) registered on-chain.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MusicalWork {
     /// Unique MIDDS identifier.
     pub id: i64,
@@ -88,6 +92,7 @@ pub struct MusicalWork {
 
 /// A single musical work in a paginated list.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MusicalWorkEdge {
     /// The musical work.
     pub node: MusicalWork,
@@ -97,6 +102,7 @@ pub struct MusicalWorkEdge {
 
 /// Paginated list of musical works.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MusicalWorkConnection {
     /// List of musical work edges.
     pub edges: Vec<MusicalWorkEdge>,
@@ -112,6 +118,7 @@ pub struct MusicalWorkConnection {
 
 /// A recording registered on-chain.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Recording {
     /// Unique MIDDS identifier.
     pub id: i64,
@@ -153,6 +160,7 @@ pub struct Recording {
 
 /// A single recording in a paginated list.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RecordingEdge {
     /// The recording.
     pub node: Recording,
@@ -162,6 +170,7 @@ pub struct RecordingEdge {
 
 /// Paginated list of recordings.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RecordingConnection {
     /// List of recording edges.
     pub edges: Vec<RecordingEdge>,
@@ -177,6 +186,7 @@ pub struct RecordingConnection {
 
 /// A release (album/single) registered on-chain.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Release {
     /// Unique MIDDS identifier.
     pub id: i64,
@@ -218,6 +228,7 @@ pub struct Release {
 
 /// A single release in a paginated list.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReleaseEdge {
     /// The release.
     pub node: Release,
@@ -227,6 +238,7 @@ pub struct ReleaseEdge {
 
 /// Paginated list of releases.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReleaseConnection {
     /// List of release edges.
     pub edges: Vec<ReleaseEdge>,
@@ -242,6 +254,7 @@ pub struct ReleaseConnection {
 
 /// Statistics about MIDDS on-chain data.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MiddsStats {
     /// Total number of musical works registered.
     pub total_musical_works: i64,

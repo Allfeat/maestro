@@ -34,6 +34,7 @@ pub enum Order {
 
 /// Page information for Relay-style cursor pagination.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PageInfo {
     /// Whether there are more items after the current page.
     pub has_next_page: bool,
@@ -51,6 +52,7 @@ pub struct PageInfo {
 
 /// Indexer status and statistics.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct IndexerStatus {
     /// The latest indexed block number.
     pub latest_indexed_block: Option<u64>,
@@ -60,6 +62,7 @@ pub struct IndexerStatus {
 
 /// A blockchain block.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Block {
     /// Block number (height).
     pub number: i64,
@@ -85,6 +88,7 @@ pub struct Block {
 
 /// A blockchain extrinsic (transaction).
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Extrinsic {
     /// Unique identifier (block_number-index).
     pub id: String,
@@ -114,6 +118,7 @@ pub struct Extrinsic {
 
 /// A blockchain event.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Event {
     /// Unique identifier (block_number-index).
     pub id: String,
@@ -139,6 +144,7 @@ pub struct Event {
 
 /// A single block in a paginated list.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BlockEdge {
     /// The block.
     pub node: Block,
@@ -148,6 +154,7 @@ pub struct BlockEdge {
 
 /// Paginated list of blocks.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BlockConnection {
     /// List of block edges.
     pub edges: Vec<BlockEdge>,
@@ -159,6 +166,7 @@ pub struct BlockConnection {
 
 /// A single extrinsic in a paginated list.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExtrinsicEdge {
     /// The extrinsic.
     pub node: Extrinsic,
@@ -168,6 +176,7 @@ pub struct ExtrinsicEdge {
 
 /// Paginated list of extrinsics.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExtrinsicConnection {
     /// List of extrinsic edges.
     pub edges: Vec<ExtrinsicEdge>,
@@ -179,6 +188,7 @@ pub struct ExtrinsicConnection {
 
 /// A single event in a paginated list.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EventEdge {
     /// The event.
     pub node: Event,
@@ -188,6 +198,7 @@ pub struct EventEdge {
 
 /// Paginated list of events.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EventConnection {
     /// List of event edges.
     pub edges: Vec<EventEdge>,

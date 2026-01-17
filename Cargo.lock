@@ -3163,7 +3163,7 @@ dependencies = [
 
 [[package]]
 name = "maestro-ats-schema"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-graphql",
  "chrono",
@@ -3173,7 +3173,7 @@ dependencies = [
 
 [[package]]
 name = "maestro-balances-schema"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-graphql",
  "chrono",
@@ -3222,7 +3222,7 @@ dependencies = [
 
 [[package]]
 name = "maestro-graphql-schema"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-graphql",
  "chrono",
@@ -3252,7 +3252,7 @@ dependencies = [
 
 [[package]]
 name = "maestro-midds-schema"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-graphql",
  "chrono",

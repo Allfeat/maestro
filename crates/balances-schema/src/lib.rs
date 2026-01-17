@@ -19,6 +19,7 @@ pub use maestro_graphql_schema::PageInfo;
 
 /// A token transfer event from the Balances pallet.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Transfer {
     /// Unique identifier (block_number-event_index).
     pub id: String,
@@ -32,9 +33,11 @@ pub struct Transfer {
     pub extrinsic_index: Option<i32>,
     /// Sender account (hex encoded with 0x prefix).
     #[graphql(name = "from")]
+    #[serde(rename = "from")]
     pub from_account: String,
     /// Recipient account (hex encoded with 0x prefix).
     #[graphql(name = "to")]
+    #[serde(rename = "to")]
     pub to_account: String,
     /// Transfer amount (as string for large numbers).
     pub amount: String,
@@ -50,6 +53,7 @@ pub struct Transfer {
 
 /// A single transfer in a paginated list.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TransferEdge {
     /// The transfer.
     pub node: Transfer,
@@ -59,6 +63,7 @@ pub struct TransferEdge {
 
 /// Paginated list of transfers.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TransferConnection {
     /// List of transfer edges.
     pub edges: Vec<TransferEdge>,

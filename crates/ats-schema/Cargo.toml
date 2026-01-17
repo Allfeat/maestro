@@ -1,6 +1,6 @@
 [package]
 name = "maestro-ats-schema"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Allfeat ATS pallet GraphQL types (AtsWork, AtsVersion, ownership transfers) for Maestro indexer clients"
 license = "MIT OR Apache-2.0"
@@ -9,7 +9,7 @@ keywords = ["graphql", "blockchain", "substrate", "allfeat", "ats"]
 categories = ["api-bindings", "web-programming"]
 
 [dependencies]
-maestro-graphql-schema = { version = "0.1.0", path = "../graphql-schema" }
+maestro-graphql-schema = { version = "0.1.1", path = "../graphql-schema" }
 async-graphql = { version = "7.0", default-features = false, features = ["chrono"] }
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }

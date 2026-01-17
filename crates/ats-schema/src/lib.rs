@@ -20,6 +20,7 @@ pub use maestro_graphql_schema::PageInfo;
 
 /// An ATS (Allfeat Timestamp) work registered on-chain.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AtsWork {
     /// Unique ATS identifier.
     pub id: i64,
@@ -35,6 +36,7 @@ pub struct AtsWork {
 
 /// A version of an ATS work.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AtsVersion {
     /// Unique identifier: "{ats_id}-{version}".
     pub id: String,
@@ -54,6 +56,7 @@ pub struct AtsVersion {
 
 /// An ownership transfer (claim) of an ATS.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AtsOwnershipTransfer {
     /// Unique identifier.
     pub id: String,
@@ -73,6 +76,7 @@ pub struct AtsOwnershipTransfer {
 
 /// A verification key update event.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AtsVerificationKeyUpdate {
     /// Unique identifier.
     pub id: String,
@@ -88,6 +92,7 @@ pub struct AtsVerificationKeyUpdate {
 
 /// Statistics about ATS on-chain data.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AtsStats {
     /// Total number of ATS works registered.
     pub total_ats_count: i64,
@@ -101,6 +106,7 @@ pub struct AtsStats {
 
 /// A single ATS work in a paginated list.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AtsWorkEdge {
     /// The ATS work.
     pub node: AtsWork,
@@ -110,6 +116,7 @@ pub struct AtsWorkEdge {
 
 /// Paginated list of ATS works.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AtsWorkConnection {
     /// List of ATS work edges.
     pub edges: Vec<AtsWorkEdge>,
@@ -121,6 +128,7 @@ pub struct AtsWorkConnection {
 
 /// A single ownership transfer in a paginated list.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AtsOwnershipTransferEdge {
     /// The ownership transfer.
     pub node: AtsOwnershipTransfer,
@@ -130,6 +138,7 @@ pub struct AtsOwnershipTransferEdge {
 
 /// Paginated list of ownership transfers.
 #[derive(async_graphql::SimpleObject, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AtsOwnershipTransferConnection {
     /// List of ownership transfer edges.
     pub edges: Vec<AtsOwnershipTransferEdge>,
