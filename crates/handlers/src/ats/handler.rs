@@ -398,3 +398,273 @@ impl PalletHandler for AtsHandler {
         10
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use maestro_core::error::StorageResult;
+    use maestro_core::models::BlockHash;
+    use maestro_core::ports::{Connection, OrderDirection, PageInfo, Pagination};
+    use serde_json::json;
+
+    use super::super::storage::{AtsTransferFilter, AtsWorkFilter};
+
+    /// Mock storage for testing (doesn't persist anything).
+    struct MockStorage;
+
+    #[async_trait]
+    impl AtsStorage for MockStorage {
+        async fn insert_ats_work(&self, _work: &AtsWork) -> StorageResult<()> {
+            Ok(())
+        }
+        async fn get_ats_work(&self, _id: u64) -> StorageResult<Option<AtsWork>> {
+            Ok(None)
+        }
+        async fn update_ats_owner(&self, _id: u64, _owner: &AccountId) -> StorageResult<()> {
+            Ok(())
+        }
+        async fn update_ats_latest_version(&self, _id: u64, _version: u32) -> StorageResult<()> {
+            Ok(())
+        }
+        async fn list_ats_works(
+            &self,
+            _filter: AtsWorkFilter,
+            _pagination: Pagination,
+            _order: OrderDirection,
+        ) -> StorageResult<Connection<AtsWork>> {
+            Ok(Connection {
+                edges: vec![],
+                page_info: PageInfo {
+                    has_next_page: false,
+                    has_previous_page: false,
+                    start_cursor: None,
+                    end_cursor: None,
+                },
+                total_count: Some(0),
+            })
+        }
+        async fn list_ats_by_owner(&self, _owner: &AccountId) -> StorageResult<Vec<AtsWork>> {
+            Ok(vec![])
+        }
+        async fn count_ats_works(&self) -> StorageResult<u64> {
+            Ok(0)
+        }
+        async fn count_ats_by_owner(&self, _owner: &AccountId) -> StorageResult<u64> {
+            Ok(0)
+        }
+        async fn insert_ats_version(&self, _version: &AtsVersion) -> StorageResult<()> {
+            Ok(())
+        }
+        async fn get_ats_version(
+            &self,
+            _ats_id: u64,
+            _version: u32,
+        ) -> StorageResult<Option<AtsVersion>> {
+            Ok(None)
+        }
+        async fn list_versions_for_ats(&self, _ats_id: u64) -> StorageResult<Vec<AtsVersion>> {
+            Ok(vec![])
+        }
+        async fn find_by_hash_commitment(
+            &self,
+            _hash: &[u8; 32],
+        ) -> StorageResult<Option<AtsVersion>> {
+            Ok(None)
+        }
+        async fn insert_ownership_transfer(
+            &self,
+            _transfer: &AtsOwnershipTransfer,
+        ) -> StorageResult<()> {
+            Ok(())
+        }
+        async fn list_transfers_for_ats(
+            &self,
+            _ats_id: u64,
+        ) -> StorageResult<Vec<AtsOwnershipTransfer>> {
+            Ok(vec![])
+        }
+        async fn list_transfers(
+            &self,
+            _filter: AtsTransferFilter,
+            _pagination: Pagination,
+            _order: OrderDirection,
+        ) -> StorageResult<Connection<AtsOwnershipTransfer>> {
+            Ok(Connection {
+                edges: vec![],
+                page_info: PageInfo {
+                    has_next_page: false,
+                    has_previous_page: false,
+                    start_cursor: None,
+                    end_cursor: None,
+                },
+                total_count: Some(0),
+            })
+        }
+        async fn insert_vk_update(&self, _update: &AtsVerificationKeyUpdate) -> StorageResult<()> {
+            Ok(())
+        }
+        async fn get_latest_vk(&self) -> StorageResult<Option<AtsVerificationKeyUpdate>> {
+            Ok(None)
+        }
+        async fn list_vk_updates(&self) -> StorageResult<Vec<AtsVerificationKeyUpdate>> {
+            Ok(vec![])
+        }
+        async fn delete_from_block(&self, _from_block: u64) -> StorageResult<u64> {
+            Ok(0)
+        }
+    }
+
+    fn mock_block(number: u64) -> Block {
+        Block {
+            number,
+            hash: BlockHash([0xaa; 32]),
+            parent_hash: BlockHash([0xbb; 32]),
+            state_root: BlockHash([0xcc; 32]),
+            extrinsics_root: BlockHash([0xdd; 32]),
+            author: None,
+            timestamp: Some(Utc::now()),
+            extrinsic_count: 0,
+            event_count: 0,
+            indexed_at: Utc::now(),
+        }
+    }
+
+    fn mock_event(name: &str, data: serde_json::Value) -> RawEvent {
+        RawEvent {
+            index: 0,
+            extrinsic_index: Some(0),
+            pallet: "Ats".to_string(),
+            name: name.to_string(),
+            data,
+            topics: vec![],
+        }
+    }
+
+    #[test]
+    fn test_process_ats_registered_valid() {
+        let handler = AtsHandler::new(Arc::new(MockStorage));
+        let block = mock_block(100);
+
+        let event = mock_event(
+            "ATSRegistered",
+            json!({
+                "provider": "0x".to_string() + &"ab".repeat(32),
+                "ats_id": 42,
+                "hash_commitment": "0x".to_string() + &"cd".repeat(32)
+            }),
+        );
+
+        let result = handler.process_ats_registered(&event, &block);
+        assert!(result.is_some());
+
+        let (work, version) = result.unwrap();
+        assert_eq!(work.id, 42);
+        assert_eq!(work.owner.0, [0xab; 32]);
+        assert_eq!(work.created_at_block, 100);
+        assert_eq!(work.latest_version, 1);
+
+        assert_eq!(version.ats_id, 42);
+        assert_eq!(version.version, 1);
+        assert_eq!(version.hash_commitment, [0xcd; 32]);
+    }
+
+    #[test]
+    fn test_process_ats_registered_missing_provider() {
+        let handler = AtsHandler::new(Arc::new(MockStorage));
+        let block = mock_block(100);
+
+        let event = mock_event(
+            "ATSRegistered",
+            json!({
+                "ats_id": 42,
+                "hash_commitment": "0x".to_string() + &"cd".repeat(32)
+            }),
+        );
+
+        let result = handler.process_ats_registered(&event, &block);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_process_ats_updated_valid() {
+        let handler = AtsHandler::new(Arc::new(MockStorage));
+        let block = mock_block(200);
+
+        let event = mock_event(
+            "ATSUpdated",
+            json!({
+                "provider": "0x".to_string() + &"11".repeat(32), // position 0
+                "ats_id": 42,                                     // position 1
+                "version": 3,                                     // position 2
+                "hash_commitment": "0x".to_string() + &"ef".repeat(32) // position 3
+            }),
+        );
+
+        let result = handler.process_ats_updated(&event, &block);
+        assert!(result.is_some());
+
+        let (ats_id, version) = result.unwrap();
+        assert_eq!(ats_id, 42);
+        assert_eq!(version.ats_id, 42);
+        assert_eq!(version.version, 3);
+        assert_eq!(version.hash_commitment, [0xef; 32]);
+        assert_eq!(version.registered_at_block, 200);
+    }
+
+    #[test]
+    fn test_process_ats_claimed_valid() {
+        let handler = AtsHandler::new(Arc::new(MockStorage));
+        let block = mock_block(300);
+
+        let event = mock_event(
+            "ATSClaimed",
+            json!({
+                "old_owner": "0x".to_string() + &"aa".repeat(32),
+                "new_owner": "0x".to_string() + &"bb".repeat(32),
+                "ats_id": 99
+            }),
+        );
+
+        let result = handler.process_ats_claimed(&event, &block);
+        assert!(result.is_some());
+
+        let transfer = result.unwrap();
+        assert_eq!(transfer.ats_id, 99);
+        assert_eq!(transfer.old_owner.0, [0xaa; 32]);
+        assert_eq!(transfer.new_owner.0, [0xbb; 32]);
+        assert_eq!(transfer.block_number, 300);
+    }
+
+    #[test]
+    fn test_process_vk_updated_valid() {
+        let handler = AtsHandler::new(Arc::new(MockStorage));
+        let block = mock_block(400);
+
+        let event = mock_event(
+            "VerificationKeyUpdated",
+            json!({
+                "vk": "0xdeadbeefcafe"
+            }),
+        );
+
+        let result = handler.process_vk_updated(&event, &block);
+        assert!(result.is_some());
+
+        let vk_update = result.unwrap();
+        assert_eq!(vk_update.vk, vec![0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe]);
+        assert_eq!(vk_update.block_number, 400);
+    }
+
+    #[test]
+    fn test_pallet_name() {
+        let handler = AtsHandler::new(Arc::new(MockStorage));
+        assert_eq!(handler.pallet_name(), "Ats");
+    }
+
+    #[test]
+    fn test_priority() {
+        let handler = AtsHandler::new(Arc::new(MockStorage));
+        assert_eq!(handler.priority(), 10);
+    }
+}
