@@ -34,6 +34,10 @@ pub fn init_metrics() {
         "blocks_deleted_total",
         "Total number of blocks deleted due to reorg"
     );
+    describe_histogram!(
+        "db_query_duration_seconds",
+        "Database query execution time in seconds"
+    );
 }
 
 /// Record a decode error.
@@ -106,5 +110,48 @@ impl Drop for ProcessingTimer {
     fn drop(&mut self) {
         let duration = self.start.elapsed().as_secs_f64();
         record_block_processing_duration(duration);
+    }
+}
+
+/// Record database query duration.
+///
+/// # Arguments
+/// * `operation` - The type of operation (e.g., "get_block", "insert_blocks")
+/// * `duration_secs` - The query duration in seconds
+pub fn record_query_duration(operation: &str, duration_secs: f64) {
+    histogram!("db_query_duration_seconds", "operation" => operation.to_string())
+        .record(duration_secs);
+}
+
+/// A timer for database queries that automatically records duration when dropped.
+///
+/// # Example
+/// ```ignore
+/// async fn get_block(&self, number: u64) -> Result<Option<Block>> {
+///     let _timer = QueryTimer::new("get_block");
+///     sqlx::query_as::<_, BlockRow>(...)
+///         .fetch_optional(&self.pool)
+///         .await
+/// }
+/// ```
+pub struct QueryTimer {
+    operation: String,
+    start: Instant,
+}
+
+impl QueryTimer {
+    /// Start a new query timer for the given operation.
+    pub fn new(operation: &str) -> Self {
+        Self {
+            operation: operation.to_string(),
+            start: Instant::now(),
+        }
+    }
+}
+
+impl Drop for QueryTimer {
+    fn drop(&mut self) {
+        let duration = self.start.elapsed().as_secs_f64();
+        record_query_duration(&self.operation, duration);
     }
 }
