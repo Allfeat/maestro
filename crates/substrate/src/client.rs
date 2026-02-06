@@ -46,9 +46,16 @@ impl SubstrateClient {
     pub async fn connect(config: SubstrateClientConfig) -> ChainResult<Self> {
         debug!("Connecting to node");
 
-        let rpc_client = RpcClient::from_url(&config.ws_url)
-            .await
-            .map_err(|e| ChainError::ConnectionFailed(e.to_string()))?;
+        // Use insecure client for ws:// URLs, secure client for wss://
+        let rpc_client = if config.ws_url.starts_with("ws://") {
+            RpcClient::from_insecure_url(&config.ws_url)
+                .await
+                .map_err(|e| ChainError::ConnectionFailed(e.to_string()))?
+        } else {
+            RpcClient::from_url(&config.ws_url)
+                .await
+                .map_err(|e| ChainError::ConnectionFailed(e.to_string()))?
+        };
         let backend: ChainHeadBackend<PolkadotConfig> =
             ChainHeadBackendBuilder::default().build_with_background_driver(rpc_client.clone());
         let client = OnlineClient::<PolkadotConfig>::from_backend(Arc::new(backend))

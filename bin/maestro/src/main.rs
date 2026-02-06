@@ -61,22 +61,22 @@ struct Cli {
     metrics_port: u16,
 
     /// Enable JSON log output.
-    #[arg(long, env = "JSON_LOGS")]
+    #[arg(long, env = "JSON_LOGS", default_value = "false", value_parser = parse_bool)]
     json_logs: bool,
 
     /// Run database migrations and exit.
-    #[arg(long)]
+    #[arg(long, env = "MIGRATE_ONLY", default_value = "false", value_parser = parse_bool)]
     migrate_only: bool,
 
     /// Purge all indexed data from the database and exit.
     ///
     /// This will delete all blocks, extrinsics, events, transfers, and reset
     /// the indexer cursor. Schema/migrations are preserved.
-    #[arg(long)]
+    #[arg(long, env = "PURGE", default_value = "false", value_parser = parse_bool)]
     purge: bool,
 
     /// Skip confirmation prompt for destructive operations (like --purge).
-    #[arg(long, short = 'y')]
+    #[arg(long, short = 'y', env = "YES", default_value = "false", value_parser = parse_bool)]
     yes: bool,
 
     /// Log level (trace, debug, info, warn, error).
@@ -89,7 +89,7 @@ struct Cli {
 
     /// Export GraphQL schema (SDL format) to stdout and exit.
     /// Useful for code generation tools (cynic, graphql-client, etc.)
-    #[arg(long)]
+    #[arg(long, env = "EXPORT_SCHEMA", default_value = "false", value_parser = parse_bool)]
     export_schema: bool,
 }
 
@@ -100,6 +100,18 @@ fn parse_block_mode(s: &str) -> Result<BlockMode, String> {
         "best" => Ok(BlockMode::Best),
         _ => Err(format!(
             "Invalid block mode '{}'. Use 'finalized' or 'best'.",
+            s
+        )),
+    }
+}
+
+/// Parse boolean from string (for env var support).
+fn parse_bool(s: &str) -> Result<bool, String> {
+    match s.to_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" => Ok(true),
+        "false" | "0" | "no" | "off" => Ok(false),
+        _ => Err(format!(
+            "Invalid boolean '{}'. Use 'true', 'false', '1', '0', 'yes', 'no'.",
             s
         )),
     }

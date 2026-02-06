@@ -39,16 +39,19 @@ docker-compose down                   # Stop PostgreSQL
 
 | Argument | Env Var | Default | Description |
 |----------|---------|---------|-------------|
-| `--ws-url` | `WS_URL` | `ws://127.0.0.1:9944` | Substrate node WebSocket URL |
+| `--ws-url` | `WS_URL` | `ws://127.0.0.1:9944` | Substrate node WebSocket URL (ws:// and wss:// supported) |
 | `--database-url` | `DATABASE_URL` | `postgres://localhost/maestro` | PostgreSQL connection URL |
 | `--graphql-port` | `GRAPHQL_PORT` | `4000` | GraphQL server port |
 | `--metrics-port` | `METRICS_PORT` | `9090` | Prometheus metrics port |
 | `--log-level` | `LOG_LEVEL` | `info` | Log level (trace, debug, info, warn, error) |
 | `--json-logs` | `JSON_LOGS` | `false` | Enable JSON log output |
 | `--block-mode` | `BLOCK_MODE` | `finalized` | Block subscription mode (finalized/best) |
-| `--migrate-only` | - | - | Run migrations and exit |
-| `--purge` | - | - | Purge all indexed data and exit |
-| `-y, --yes` | - | - | Skip confirmation prompts |
+| `--migrate-only` | `MIGRATE_ONLY` | `false` | Run migrations and exit |
+| `--purge` | `PURGE` | `false` | Purge all indexed data and exit |
+| `-y, --yes` | `YES` | `false` | Skip confirmation prompts |
+| `--export-schema` | `EXPORT_SCHEMA` | `false` | Export GraphQL schema (SDL) and exit |
+
+Boolean env vars accept: `true`, `false`, `1`, `0`, `yes`, `no`, `on`, `off`
 
 ## Architecture
 
