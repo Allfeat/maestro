@@ -15,6 +15,8 @@ pub struct AtsWorkFilter {
     pub owner: Option<AccountId>,
     pub created_at_block_gte: Option<u64>,
     pub created_at_block_lte: Option<u64>,
+    pub created_at_timestamp_gte: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at_timestamp_lte: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Filter options for ATS version queries.
@@ -231,6 +233,14 @@ impl AtsStorage for PgAtsStorage {
         }
         if filter.created_at_block_lte.is_some() {
             conditions.push(format!("created_at_block <= ${}", param_idx));
+            param_idx += 1;
+        }
+        if filter.created_at_timestamp_gte.is_some() {
+            conditions.push(format!("created_at_timestamp >= ${}", param_idx));
+            param_idx += 1;
+        }
+        if filter.created_at_timestamp_lte.is_some() {
+            conditions.push(format!("created_at_timestamp <= ${}", param_idx));
             // param_idx += 1; // not needed, last param
         }
 
@@ -268,6 +278,12 @@ impl AtsStorage for PgAtsStorage {
             }
             if let Some(block) = filter.created_at_block_lte {
                 q = q.bind(block as i64);
+            }
+            if let Some(ts) = filter.created_at_timestamp_gte {
+                q = q.bind(ts);
+            }
+            if let Some(ts) = filter.created_at_timestamp_lte {
+                q = q.bind(ts);
             }
             q.fetch_all(&self.pool)
                 .await
@@ -855,5 +871,9 @@ CREATE TABLE ats_verification_keys (
 );
 
 CREATE INDEX idx_ats_vk_block ON ats_verification_keys(block_number);
+"#,
+    // Migration 1: Add index on created_at_timestamp for date range filtering
+    r#"
+CREATE INDEX IF NOT EXISTS idx_ats_works_created_at_ts ON ats_works(created_at_timestamp);
 "#,
 ];
