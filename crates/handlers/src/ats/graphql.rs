@@ -37,6 +37,13 @@ pub struct AtsWork {
 
 #[async_graphql::ComplexObject]
 impl AtsWork {
+    /// Hash commitment of the latest version.
+    async fn latest_hash_commitment<'ctx>(&self, ctx: &Context<'ctx>) -> Result<Option<String>> {
+        let storage = ctx.data::<Arc<dyn AtsStorage>>()?;
+        let version = storage.get_ats_version(self.id as u64, self.latest_version as u32).await?;
+        Ok(version.map(|v| format!("0x{}", hex::encode(v.hash_commitment))))
+    }
+
     /// All versions of this ATS.
     async fn versions<'ctx>(&self, ctx: &Context<'ctx>) -> Result<Vec<AtsVersion>> {
         let storage = ctx.data::<Arc<dyn AtsStorage>>()?;
