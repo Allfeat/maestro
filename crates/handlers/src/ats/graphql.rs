@@ -275,6 +275,8 @@ impl AtsQuery {
         owner: Option<String>,
         created_at_block_gte: Option<i64>,
         created_at_block_lte: Option<i64>,
+        created_at_timestamp_gte: Option<DateTime<Utc>>,
+        created_at_timestamp_lte: Option<DateTime<Utc>>,
         #[graphql(default)] order: Order,
     ) -> Result<AtsWorkConnection> {
         let storage = ctx.data::<Arc<dyn AtsStorage>>()?;
@@ -283,6 +285,8 @@ impl AtsQuery {
             owner: owner.map(|s| parse_account(&s)).transpose()?,
             created_at_block_gte: created_at_block_gte.map(|n| n as u64),
             created_at_block_lte: created_at_block_lte.map(|n| n as u64),
+            created_at_timestamp_gte,
+            created_at_timestamp_lte,
         };
 
         let pagination = Pagination {
