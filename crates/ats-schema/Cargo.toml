@@ -1,8 +1,8 @@
 [package]
 name = "maestro-ats-schema"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
-description = "Allfeat ATS pallet GraphQL types (AtsWork, AtsVersion, ownership transfers) for Maestro indexer clients"
+description = "Allfeat ATS pallet GraphQL types (AtsWork, AtsVersion) for Maestro indexer clients"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/allfeat/indexer"
 keywords = ["graphql", "blockchain", "substrate", "allfeat", "ats"]

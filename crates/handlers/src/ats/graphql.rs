@@ -8,11 +8,8 @@ use chrono::{DateTime, Utc};
 use maestro_core::ports::Pagination;
 use maestro_graphql::{convert_order, Order, PageInfo};
 
-use super::models::{
-    AtsOwnershipTransfer as AtsOwnershipTransferModel, AtsVerificationKeyUpdate as AtsVkUpdateModel,
-    AtsVersion as AtsVersionModel, AtsWork as AtsWorkModel,
-};
-use super::storage::{AtsStorage, AtsTransferFilter, AtsWorkFilter};
+use super::models::{AtsVersion as AtsVersionModel, AtsWork as AtsWorkModel};
+use super::storage::{AtsStorage, AtsWorkFilter};
 use crate::graphql_utils::{parse_account, parse_hash, validate_pagination_first};
 
 // -----------------------------------------------------------------------------
@@ -50,13 +47,6 @@ impl AtsWork {
         let versions = storage.list_versions_for_ats(self.id as u64).await?;
         Ok(versions.into_iter().map(AtsVersion::from).collect())
     }
-
-    /// Ownership transfer history for this ATS.
-    async fn transfers<'ctx>(&self, ctx: &Context<'ctx>) -> Result<Vec<AtsOwnershipTransfer>> {
-        let storage = ctx.data::<Arc<dyn AtsStorage>>()?;
-        let transfers = storage.list_transfers_for_ats(self.id as u64).await?;
-        Ok(transfers.into_iter().map(AtsOwnershipTransfer::from).collect())
-    }
 }
 
 impl From<AtsWorkModel> for AtsWork {
@@ -80,8 +70,10 @@ pub struct AtsVersion {
     pub ats_id: i64,
     /// Version number.
     pub version: i32,
-    /// Hash commitment for this version (hex encoded).
-    pub hash_commitment: String,
+    /// Commitment for this version (hex encoded).
+    pub commitment: String,
+    /// Protocol version for this ATS version.
+    pub protocol_version: i32,
     /// Block number when this version was registered.
     pub registered_at_block: i64,
     /// Timestamp when this version was registered.
@@ -96,70 +88,11 @@ impl From<AtsVersionModel> for AtsVersion {
             id: v.id,
             ats_id: v.ats_id as i64,
             version: v.version as i32,
-            hash_commitment: format!("0x{}", hex::encode(v.hash_commitment)),
+            commitment: format!("0x{}", hex::encode(v.commitment)),
+            protocol_version: v.protocol_version as i32,
             registered_at_block: v.registered_at_block as i64,
             registered_at_timestamp: v.registered_at_timestamp,
             event_index: v.event_index as i32,
-        }
-    }
-}
-
-/// An ownership transfer (claim) of an ATS.
-#[derive(async_graphql::SimpleObject)]
-pub struct AtsOwnershipTransfer {
-    /// Unique identifier.
-    pub id: String,
-    /// ATS identifier that was transferred.
-    pub ats_id: i64,
-    /// Previous owner account (hex encoded).
-    pub old_owner: String,
-    /// New owner account (hex encoded).
-    pub new_owner: String,
-    /// Block number of the transfer.
-    pub block_number: i64,
-    /// Event index within the block.
-    pub event_index: i32,
-    /// Timestamp of the transfer.
-    pub timestamp: Option<DateTime<Utc>>,
-}
-
-impl From<AtsOwnershipTransferModel> for AtsOwnershipTransfer {
-    fn from(t: AtsOwnershipTransferModel) -> Self {
-        Self {
-            id: t.id,
-            ats_id: t.ats_id as i64,
-            old_owner: format!("0x{}", hex::encode(t.old_owner.0)),
-            new_owner: format!("0x{}", hex::encode(t.new_owner.0)),
-            block_number: t.block_number as i64,
-            event_index: t.event_index as i32,
-            timestamp: t.timestamp,
-        }
-    }
-}
-
-/// A verification key update event.
-#[derive(async_graphql::SimpleObject)]
-pub struct AtsVerificationKeyUpdate {
-    /// Unique identifier.
-    pub id: String,
-    /// The verification key (hex encoded).
-    pub vk: String,
-    /// Block number when the key was updated.
-    pub block_number: i64,
-    /// Event index within the block.
-    pub event_index: i32,
-    /// Timestamp of the update.
-    pub timestamp: Option<DateTime<Utc>>,
-}
-
-impl From<AtsVkUpdateModel> for AtsVerificationKeyUpdate {
-    fn from(v: AtsVkUpdateModel) -> Self {
-        Self {
-            id: v.id,
-            vk: format!("0x{}", hex::encode(&v.vk)),
-            block_number: v.block_number as i64,
-            event_index: v.event_index as i32,
-            timestamp: v.timestamp,
         }
     }
 }
@@ -189,43 +122,6 @@ impl From<maestro_core::ports::Connection<AtsWorkModel>> for AtsWorkConnection {
                 .into_iter()
                 .map(|e| AtsWorkEdge {
                     node: AtsWork::from(e.node),
-                    cursor: e.cursor.value,
-                })
-                .collect(),
-            page_info: PageInfo {
-                has_next_page: conn.page_info.has_next_page,
-                has_previous_page: conn.page_info.has_previous_page,
-                start_cursor: conn.page_info.start_cursor.map(|c| c.value),
-                end_cursor: conn.page_info.end_cursor.map(|c| c.value),
-            },
-            total_count: conn.total_count,
-        }
-    }
-}
-
-#[derive(async_graphql::SimpleObject)]
-pub struct AtsOwnershipTransferEdge {
-    pub node: AtsOwnershipTransfer,
-    pub cursor: String,
-}
-
-#[derive(async_graphql::SimpleObject)]
-pub struct AtsOwnershipTransferConnection {
-    pub edges: Vec<AtsOwnershipTransferEdge>,
-    pub page_info: PageInfo,
-    pub total_count: Option<i64>,
-}
-
-impl From<maestro_core::ports::Connection<AtsOwnershipTransferModel>>
-    for AtsOwnershipTransferConnection
-{
-    fn from(conn: maestro_core::ports::Connection<AtsOwnershipTransferModel>) -> Self {
-        Self {
-            edges: conn
-                .edges
-                .into_iter()
-                .map(|e| AtsOwnershipTransferEdge {
-                    node: AtsOwnershipTransfer::from(e.node),
                     cursor: e.cursor.value,
                 })
                 .collect(),
@@ -318,15 +214,15 @@ impl AtsQuery {
         Ok(works.into_iter().map(AtsWork::from).collect())
     }
 
-    /// Find an ATS version by hash commitment.
-    async fn ats_version_by_hash<'ctx>(
+    /// Find an ATS version by commitment.
+    async fn ats_version_by_commitment<'ctx>(
         &self,
         ctx: &Context<'ctx>,
-        hash_commitment: String,
+        commitment: String,
     ) -> Result<Option<AtsVersion>> {
         let storage = ctx.data::<Arc<dyn AtsStorage>>()?;
-        let hash = parse_hash(&hash_commitment)?;
-        let version = storage.find_by_hash_commitment(&hash).await?;
+        let hash = parse_hash(&commitment)?;
+        let version = storage.find_by_commitment(&hash).await?;
         Ok(version.map(AtsVersion::from))
     }
 
@@ -351,59 +247,6 @@ impl AtsQuery {
         let storage = ctx.data::<Arc<dyn AtsStorage>>()?;
         let versions = storage.list_versions_for_ats(ats_id as u64).await?;
         Ok(versions.into_iter().map(AtsVersion::from).collect())
-    }
-
-    /// List ATS ownership transfers with pagination and filtering.
-    #[allow(clippy::too_many_arguments)]
-    async fn ats_transfers<'ctx>(
-        &self,
-        ctx: &Context<'ctx>,
-        #[graphql(default = 20)] first: Option<i32>,
-        after: Option<String>,
-        ats_id: Option<i64>,
-        old_owner: Option<String>,
-        new_owner: Option<String>,
-        #[graphql(desc = "Filter by either old_owner or new_owner")]
-        account: Option<String>,
-        #[graphql(default)] order: Order,
-    ) -> Result<AtsOwnershipTransferConnection> {
-        let storage = ctx.data::<Arc<dyn AtsStorage>>()?;
-
-        let filter = AtsTransferFilter {
-            ats_id: ats_id.map(|n| n as u64),
-            old_owner: old_owner.map(|s| parse_account(&s)).transpose()?,
-            new_owner: new_owner.map(|s| parse_account(&s)).transpose()?,
-            account: account.map(|s| parse_account(&s)).transpose()?,
-        };
-
-        let pagination = Pagination {
-            first: Some(validate_pagination_first(first)),
-            after: after.map(|v| maestro_core::ports::Cursor { value: v }),
-            ..Default::default()
-        };
-
-        let connection = storage.list_transfers(filter, pagination, convert_order(order)).await?;
-        Ok(AtsOwnershipTransferConnection::from(connection))
-    }
-
-    /// Get the latest verification key.
-    async fn ats_latest_verification_key<'ctx>(
-        &self,
-        ctx: &Context<'ctx>,
-    ) -> Result<Option<AtsVerificationKeyUpdate>> {
-        let storage = ctx.data::<Arc<dyn AtsStorage>>()?;
-        let vk = storage.get_latest_vk().await?;
-        Ok(vk.map(AtsVerificationKeyUpdate::from))
-    }
-
-    /// List all verification key updates.
-    async fn ats_verification_key_history<'ctx>(
-        &self,
-        ctx: &Context<'ctx>,
-    ) -> Result<Vec<AtsVerificationKeyUpdate>> {
-        let storage = ctx.data::<Arc<dyn AtsStorage>>()?;
-        let updates = storage.list_vk_updates().await?;
-        Ok(updates.into_iter().map(AtsVerificationKeyUpdate::from).collect())
     }
 
     /// Get ATS statistics.

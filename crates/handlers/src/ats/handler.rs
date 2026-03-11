@@ -1,14 +1,13 @@
 //! Handler for the ATS (Allfeat Timestamp) pallet.
 //!
 //! This handler processes events from the Allfeat ATS pallet and extracts
-//! timestamped work registrations, versions, and ownership transfers.
+//! timestamped work registrations, versions, and revocations.
 //!
 //! # Supported Events
 //!
-//! - `ATSRegistered`: New ATS work registration
-//! - `ATSUpdated`: New version of an existing ATS
-//! - `ATSClaimed`: Ownership transfer via ZKP
-//! - `VerificationKeyUpdated`: ZKP verification key update
+//! - `AtsCreated`: New ATS work registration
+//! - `AtsUpdated`: New version of an existing ATS
+//! - `AtsRevoked`: ATS revocation (deletion)
 
 use std::sync::Arc;
 
@@ -16,12 +15,12 @@ use async_trait::async_trait;
 use tracing::{debug, warn};
 
 use maestro_core::error::DomainResult;
-use maestro_core::models::{AccountId, Block};
+use maestro_core::models::Block;
 use maestro_core::ports::{HandlerOutputs, PalletHandler, RawEvent, RawExtrinsic};
 
-use super::models::{AtsOwnershipTransfer, AtsVerificationKeyUpdate, AtsVersion, AtsWork};
+use super::models::{AtsVersion, AtsWork};
 use super::storage::AtsStorage;
-use crate::utils::{extract_field, parse_account, parse_bytes, parse_hash256, parse_u32, parse_u64};
+use crate::utils::{extract_field, parse_account, parse_hash256, parse_u32, parse_u64, parse_u8};
 
 // =============================================================================
 // Handler
@@ -39,45 +38,55 @@ impl AtsHandler {
         Self { storage }
     }
 
-    /// Process an ATSRegistered event.
-    fn process_ats_registered(
+    /// Process an AtsCreated event.
+    fn process_ats_created(
         &self,
         event: &RawEvent,
         block: &Block,
     ) -> Option<(AtsWork, AtsVersion)> {
         let data = &event.data;
 
-        let provider = extract_field(data, &["provider"], 0, parse_account).or_else(|| {
+        let ats_id = extract_field(data, &["ats_id"], 0, parse_u64).or_else(|| {
             warn!(
                 block = block.number,
                 event = event.index,
-                "Failed to parse 'provider' in ATSRegistered"
+                "Failed to parse 'ats_id' in AtsCreated"
             );
             None
         })?;
 
-        let ats_id = extract_field(data, &["ats_id"], 1, parse_u64).or_else(|| {
+        let owner = extract_field(data, &["owner"], 1, parse_account).or_else(|| {
             warn!(
                 block = block.number,
                 event = event.index,
-                "Failed to parse 'ats_id' in ATSRegistered"
+                "Failed to parse 'owner' in AtsCreated"
             );
             None
         })?;
 
-        let hash_commitment =
-            extract_field(data, &["hash_commitment"], 2, parse_hash256).or_else(|| {
+        let commitment =
+            extract_field(data, &["commitment"], 2, parse_hash256).or_else(|| {
                 warn!(
                     block = block.number,
                     event = event.index,
-                    "Failed to parse 'hash_commitment' in ATSRegistered"
+                    "Failed to parse 'commitment' in AtsCreated"
+                );
+                None
+            })?;
+
+        let protocol_version =
+            extract_field(data, &["protocol_version"], 3, parse_u8).or_else(|| {
+                warn!(
+                    block = block.number,
+                    event = event.index,
+                    "Failed to parse 'protocol_version' in AtsCreated"
                 );
                 None
             })?;
 
         let work = AtsWork {
             id: ats_id,
-            owner: provider,
+            owner,
             created_at_block: block.number,
             created_at_timestamp: block.timestamp,
             latest_version: 1,
@@ -87,7 +96,8 @@ impl AtsHandler {
             id: format!("{}-{}", ats_id, 1),
             ats_id,
             version: 1,
-            hash_commitment,
+            commitment,
+            protocol_version,
             registered_at_block: block.number,
             registered_at_timestamp: block.timestamp,
             event_index: event.index,
@@ -96,34 +106,44 @@ impl AtsHandler {
         Some((work, version))
     }
 
-    /// Process an ATSUpdated event.
+    /// Process an AtsUpdated event.
     fn process_ats_updated(&self, event: &RawEvent, block: &Block) -> Option<(u64, AtsVersion)> {
         let data = &event.data;
 
-        let ats_id = extract_field(data, &["ats_id"], 1, parse_u64).or_else(|| {
+        let ats_id = extract_field(data, &["ats_id"], 0, parse_u64).or_else(|| {
             warn!(
                 block = block.number,
                 event = event.index,
-                "Failed to parse 'ats_id' in ATSUpdated"
+                "Failed to parse 'ats_id' in AtsUpdated"
             );
             None
         })?;
 
-        let version_num = extract_field(data, &["version"], 2, parse_u32).or_else(|| {
+        let version_num = extract_field(data, &["version"], 1, parse_u32).or_else(|| {
             warn!(
                 block = block.number,
                 event = event.index,
-                "Failed to parse 'version' in ATSUpdated"
+                "Failed to parse 'version' in AtsUpdated"
             );
             None
         })?;
 
-        let hash_commitment =
-            extract_field(data, &["hash_commitment"], 3, parse_hash256).or_else(|| {
+        let commitment =
+            extract_field(data, &["commitment"], 2, parse_hash256).or_else(|| {
                 warn!(
                     block = block.number,
                     event = event.index,
-                    "Failed to parse 'hash_commitment' in ATSUpdated"
+                    "Failed to parse 'commitment' in AtsUpdated"
+                );
+                None
+            })?;
+
+        let protocol_version =
+            extract_field(data, &["protocol_version"], 3, parse_u8).or_else(|| {
+                warn!(
+                    block = block.number,
+                    event = event.index,
+                    "Failed to parse 'protocol_version' in AtsUpdated"
                 );
                 None
             })?;
@@ -132,7 +152,8 @@ impl AtsHandler {
             id: format!("{}-{}", ats_id, version_num),
             ats_id,
             version: version_num,
-            hash_commitment,
+            commitment,
+            protocol_version,
             registered_at_block: block.number,
             registered_at_timestamp: block.timestamp,
             event_index: event.index,
@@ -141,72 +162,20 @@ impl AtsHandler {
         Some((ats_id, version))
     }
 
-    /// Process an ATSClaimed event.
-    fn process_ats_claimed(&self, event: &RawEvent, block: &Block) -> Option<AtsOwnershipTransfer> {
+    /// Process an AtsRevoked event.
+    fn process_ats_revoked(&self, event: &RawEvent, block: &Block) -> Option<u64> {
         let data = &event.data;
 
-        let old_owner = extract_field(data, &["old_owner"], 0, parse_account).or_else(|| {
+        let ats_id = extract_field(data, &["ats_id"], 0, parse_u64).or_else(|| {
             warn!(
                 block = block.number,
                 event = event.index,
-                "Failed to parse 'old_owner' in ATSClaimed"
+                "Failed to parse 'ats_id' in AtsRevoked"
             );
             None
         })?;
 
-        let new_owner = extract_field(data, &["new_owner"], 1, parse_account).or_else(|| {
-            warn!(
-                block = block.number,
-                event = event.index,
-                "Failed to parse 'new_owner' in ATSClaimed"
-            );
-            None
-        })?;
-
-        let ats_id = extract_field(data, &["ats_id"], 2, parse_u64).or_else(|| {
-            warn!(
-                block = block.number,
-                event = event.index,
-                "Failed to parse 'ats_id' in ATSClaimed"
-            );
-            None
-        })?;
-
-        Some(AtsOwnershipTransfer {
-            id: format!("{}-{}", block.number, event.index),
-            ats_id,
-            old_owner,
-            new_owner,
-            block_number: block.number,
-            event_index: event.index,
-            timestamp: block.timestamp,
-        })
-    }
-
-    /// Process a VerificationKeyUpdated event.
-    fn process_vk_updated(
-        &self,
-        event: &RawEvent,
-        block: &Block,
-    ) -> Option<AtsVerificationKeyUpdate> {
-        let data = &event.data;
-
-        let vk = extract_field(data, &["vk"], 0, parse_bytes).or_else(|| {
-            warn!(
-                block = block.number,
-                event = event.index,
-                "Failed to parse 'vk' in VerificationKeyUpdated"
-            );
-            None
-        })?;
-
-        Some(AtsVerificationKeyUpdate {
-            id: format!("{}-{}", block.number, event.index),
-            vk,
-            block_number: block.number,
-            event_index: event.index,
-            timestamp: block.timestamp,
-        })
+        Some(ats_id)
     }
 }
 
@@ -225,19 +194,19 @@ impl PalletHandler for AtsHandler {
         let mut outputs = HandlerOutputs::new();
 
         match event.name.as_str() {
-            "ATSRegistered" => {
-                if let Some((work, version)) = self.process_ats_registered(event, block) {
+            "AtsCreated" => {
+                if let Some((work, version)) = self.process_ats_created(event, block) {
                     debug!(
                         block = block.number,
                         ats_id = work.id,
                         owner = %hex::encode(work.owner.0),
-                        "ATS registered"
+                        "ATS created"
                     );
                     outputs.add("ats", "works", &work)?;
                     outputs.add("ats", "versions", &version)?;
                 }
             }
-            "ATSUpdated" => {
+            "AtsUpdated" => {
                 if let Some((ats_id, version)) = self.process_ats_updated(event, block) {
                     debug!(
                         block = block.number,
@@ -249,31 +218,14 @@ impl PalletHandler for AtsHandler {
                     outputs.add("ats", "version_updates", (ats_id, version.version))?;
                 }
             }
-            "ATSClaimed" => {
-                if let Some(transfer) = self.process_ats_claimed(event, block) {
+            "AtsRevoked" => {
+                if let Some(ats_id) = self.process_ats_revoked(event, block) {
                     debug!(
                         block = block.number,
-                        ats_id = transfer.ats_id,
-                        old_owner = %hex::encode(transfer.old_owner.0),
-                        new_owner = %hex::encode(transfer.new_owner.0),
-                        "ATS claimed"
+                        ats_id = ats_id,
+                        "ATS revoked"
                     );
-                    outputs.add("ats", "transfers", &transfer)?;
-                    outputs.add(
-                        "ats",
-                        "owner_updates",
-                        (transfer.ats_id, transfer.new_owner.clone()),
-                    )?;
-                }
-            }
-            "VerificationKeyUpdated" => {
-                if let Some(vk_update) = self.process_vk_updated(event, block) {
-                    debug!(
-                        block = block.number,
-                        vk_size = vk_update.vk.len(),
-                        "Verification key updated"
-                    );
-                    outputs.add("ats", "vk_updates", &vk_update)?;
+                    outputs.add("ats", "revocations", ats_id)?;
                 }
             }
             _ => {}
@@ -335,58 +287,26 @@ impl PalletHandler for AtsHandler {
             }
         }
 
-        // Persist ownership transfers
-        let transfers: Vec<AtsOwnershipTransfer> = outputs.get_typed("ats", "transfers");
-        for transfer in &transfers {
-            if let Err(e) = self.storage.insert_ownership_transfer(transfer).await {
-                warn!(
-                    block = block.number,
-                    ats_id = transfer.ats_id,
-                    error = ?e,
-                    "Failed to persist ATS ownership transfer"
-                );
-                return Err(e.into());
-            }
-        }
-
-        // Update owners for claimed ATS
-        let owner_updates: Vec<(u64, AccountId)> = outputs.get_typed("ats", "owner_updates");
-        for (ats_id, new_owner) in &owner_updates {
-            if let Err(e) = self.storage.update_ats_owner(*ats_id, new_owner).await {
+        // Handle revocations (delete ATS work + cascaded versions)
+        let revocations: Vec<u64> = outputs.get_typed("ats", "revocations");
+        for ats_id in &revocations {
+            if let Err(e) = self.storage.delete_ats_work(*ats_id).await {
                 warn!(
                     block = block.number,
                     ats_id = ats_id,
                     error = ?e,
-                    "Failed to update ATS owner"
+                    "Failed to delete revoked ATS work"
                 );
                 return Err(e.into());
             }
         }
 
-        // Persist verification key updates
-        let vk_updates: Vec<AtsVerificationKeyUpdate> = outputs.get_typed("ats", "vk_updates");
-        for vk_update in &vk_updates {
-            if let Err(e) = self.storage.insert_vk_update(vk_update).await {
-                warn!(
-                    block = block.number,
-                    error = ?e,
-                    "Failed to persist verification key update"
-                );
-                return Err(e.into());
-            }
-        }
-
-        if !works.is_empty()
-            || !versions.is_empty()
-            || !transfers.is_empty()
-            || !vk_updates.is_empty()
-        {
+        if !works.is_empty() || !versions.is_empty() || !revocations.is_empty() {
             debug!(
                 block = block.number,
                 works = works.len(),
                 versions = versions.len(),
-                transfers = transfers.len(),
-                vk_updates = vk_updates.len(),
+                revocations = revocations.len(),
                 "ATS data persisted"
             );
         }
@@ -408,7 +328,7 @@ mod tests {
     use maestro_core::ports::{Connection, OrderDirection, PageInfo, Pagination};
     use serde_json::json;
 
-    use super::super::storage::{AtsTransferFilter, AtsWorkFilter};
+    use super::super::storage::AtsWorkFilter;
 
     /// Mock storage for testing (doesn't persist anything).
     struct MockStorage;
@@ -420,9 +340,6 @@ mod tests {
         }
         async fn get_ats_work(&self, _id: u64) -> StorageResult<Option<AtsWork>> {
             Ok(None)
-        }
-        async fn update_ats_owner(&self, _id: u64, _owner: &AccountId) -> StorageResult<()> {
-            Ok(())
         }
         async fn update_ats_latest_version(&self, _id: u64, _version: u32) -> StorageResult<()> {
             Ok(())
@@ -444,13 +361,19 @@ mod tests {
                 total_count: Some(0),
             })
         }
-        async fn list_ats_by_owner(&self, _owner: &AccountId) -> StorageResult<Vec<AtsWork>> {
+        async fn list_ats_by_owner(
+            &self,
+            _owner: &maestro_core::models::AccountId,
+        ) -> StorageResult<Vec<AtsWork>> {
             Ok(vec![])
         }
         async fn count_ats_works(&self) -> StorageResult<u64> {
             Ok(0)
         }
-        async fn count_ats_by_owner(&self, _owner: &AccountId) -> StorageResult<u64> {
+        async fn count_ats_by_owner(
+            &self,
+            _owner: &maestro_core::models::AccountId,
+        ) -> StorageResult<u64> {
             Ok(0)
         }
         async fn insert_ats_version(&self, _version: &AtsVersion) -> StorageResult<()> {
@@ -466,49 +389,14 @@ mod tests {
         async fn list_versions_for_ats(&self, _ats_id: u64) -> StorageResult<Vec<AtsVersion>> {
             Ok(vec![])
         }
-        async fn find_by_hash_commitment(
+        async fn find_by_commitment(
             &self,
             _hash: &[u8; 32],
         ) -> StorageResult<Option<AtsVersion>> {
             Ok(None)
         }
-        async fn insert_ownership_transfer(
-            &self,
-            _transfer: &AtsOwnershipTransfer,
-        ) -> StorageResult<()> {
+        async fn delete_ats_work(&self, _id: u64) -> StorageResult<()> {
             Ok(())
-        }
-        async fn list_transfers_for_ats(
-            &self,
-            _ats_id: u64,
-        ) -> StorageResult<Vec<AtsOwnershipTransfer>> {
-            Ok(vec![])
-        }
-        async fn list_transfers(
-            &self,
-            _filter: AtsTransferFilter,
-            _pagination: Pagination,
-            _order: OrderDirection,
-        ) -> StorageResult<Connection<AtsOwnershipTransfer>> {
-            Ok(Connection {
-                edges: vec![],
-                page_info: PageInfo {
-                    has_next_page: false,
-                    has_previous_page: false,
-                    start_cursor: None,
-                    end_cursor: None,
-                },
-                total_count: Some(0),
-            })
-        }
-        async fn insert_vk_update(&self, _update: &AtsVerificationKeyUpdate) -> StorageResult<()> {
-            Ok(())
-        }
-        async fn get_latest_vk(&self) -> StorageResult<Option<AtsVerificationKeyUpdate>> {
-            Ok(None)
-        }
-        async fn list_vk_updates(&self) -> StorageResult<Vec<AtsVerificationKeyUpdate>> {
-            Ok(vec![])
         }
         async fn delete_from_block(&self, _from_block: u64) -> StorageResult<u64> {
             Ok(0)
@@ -542,20 +430,21 @@ mod tests {
     }
 
     #[test]
-    fn test_process_ats_registered_valid() {
+    fn test_process_ats_created_valid() {
         let handler = AtsHandler::new(Arc::new(MockStorage));
         let block = mock_block(100);
 
         let event = mock_event(
-            "ATSRegistered",
+            "AtsCreated",
             json!({
-                "provider": "0x".to_string() + &"ab".repeat(32),
                 "ats_id": 42,
-                "hash_commitment": "0x".to_string() + &"cd".repeat(32)
+                "owner": "0x".to_string() + &"ab".repeat(32),
+                "commitment": "0x".to_string() + &"cd".repeat(32),
+                "protocol_version": 1
             }),
         );
 
-        let result = handler.process_ats_registered(&event, &block);
+        let result = handler.process_ats_created(&event, &block);
         assert!(result.is_some());
 
         let (work, version) = result.unwrap();
@@ -566,23 +455,25 @@ mod tests {
 
         assert_eq!(version.ats_id, 42);
         assert_eq!(version.version, 1);
-        assert_eq!(version.hash_commitment, [0xcd; 32]);
+        assert_eq!(version.commitment, [0xcd; 32]);
+        assert_eq!(version.protocol_version, 1);
     }
 
     #[test]
-    fn test_process_ats_registered_missing_provider() {
+    fn test_process_ats_created_missing_owner() {
         let handler = AtsHandler::new(Arc::new(MockStorage));
         let block = mock_block(100);
 
         let event = mock_event(
-            "ATSRegistered",
+            "AtsCreated",
             json!({
                 "ats_id": 42,
-                "hash_commitment": "0x".to_string() + &"cd".repeat(32)
+                "commitment": "0x".to_string() + &"cd".repeat(32),
+                "protocol_version": 1
             }),
         );
 
-        let result = handler.process_ats_registered(&event, &block);
+        let result = handler.process_ats_created(&event, &block);
         assert!(result.is_none());
     }
 
@@ -592,12 +483,12 @@ mod tests {
         let block = mock_block(200);
 
         let event = mock_event(
-            "ATSUpdated",
+            "AtsUpdated",
             json!({
-                "provider": "0x".to_string() + &"11".repeat(32), // position 0
-                "ats_id": 42,                                     // position 1
-                "version": 3,                                     // position 2
-                "hash_commitment": "0x".to_string() + &"ef".repeat(32) // position 3
+                "ats_id": 42,
+                "version": 3,
+                "commitment": "0x".to_string() + &"ef".repeat(32),
+                "protocol_version": 2
             }),
         );
 
@@ -608,52 +499,27 @@ mod tests {
         assert_eq!(ats_id, 42);
         assert_eq!(version.ats_id, 42);
         assert_eq!(version.version, 3);
-        assert_eq!(version.hash_commitment, [0xef; 32]);
+        assert_eq!(version.commitment, [0xef; 32]);
+        assert_eq!(version.protocol_version, 2);
         assert_eq!(version.registered_at_block, 200);
     }
 
     #[test]
-    fn test_process_ats_claimed_valid() {
+    fn test_process_ats_revoked_valid() {
         let handler = AtsHandler::new(Arc::new(MockStorage));
         let block = mock_block(300);
 
         let event = mock_event(
-            "ATSClaimed",
+            "AtsRevoked",
             json!({
-                "old_owner": "0x".to_string() + &"aa".repeat(32),
-                "new_owner": "0x".to_string() + &"bb".repeat(32),
-                "ats_id": 99
+                "ats_id": 99,
+                "owner": "0x".to_string() + &"aa".repeat(32)
             }),
         );
 
-        let result = handler.process_ats_claimed(&event, &block);
+        let result = handler.process_ats_revoked(&event, &block);
         assert!(result.is_some());
-
-        let transfer = result.unwrap();
-        assert_eq!(transfer.ats_id, 99);
-        assert_eq!(transfer.old_owner.0, [0xaa; 32]);
-        assert_eq!(transfer.new_owner.0, [0xbb; 32]);
-        assert_eq!(transfer.block_number, 300);
-    }
-
-    #[test]
-    fn test_process_vk_updated_valid() {
-        let handler = AtsHandler::new(Arc::new(MockStorage));
-        let block = mock_block(400);
-
-        let event = mock_event(
-            "VerificationKeyUpdated",
-            json!({
-                "vk": "0xdeadbeefcafe"
-            }),
-        );
-
-        let result = handler.process_vk_updated(&event, &block);
-        assert!(result.is_some());
-
-        let vk_update = result.unwrap();
-        assert_eq!(vk_update.vk, vec![0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe]);
-        assert_eq!(vk_update.block_number, 400);
+        assert_eq!(result.unwrap(), 99);
     }
 
     #[test]

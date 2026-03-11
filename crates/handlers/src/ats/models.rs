@@ -24,7 +24,7 @@ pub struct AtsWork {
 
 /// A version of an ATS work.
 ///
-/// Each ATS can have multiple versions, each with its own hash commitment.
+/// Each ATS can have multiple versions, each with its own commitment.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AtsVersion {
     /// Unique identifier: "{ats_id}-{version}".
@@ -33,50 +33,14 @@ pub struct AtsVersion {
     pub ats_id: u64,
     /// Version number (starts at 1).
     pub version: u32,
-    /// Hash commitment for this version (32 bytes).
-    pub hash_commitment: [u8; 32],
+    /// Commitment for this version (32 bytes).
+    pub commitment: [u8; 32],
+    /// Protocol version for this ATS version.
+    pub protocol_version: u8,
     /// Block number when this version was registered.
     pub registered_at_block: u64,
     /// Timestamp when this version was registered.
     pub registered_at_timestamp: Option<DateTime<Utc>>,
     /// Event index within the block.
     pub event_index: u32,
-}
-
-/// An ownership transfer (claim) of an ATS.
-///
-/// Records when an ATS ownership changes via ZKP claim.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AtsOwnershipTransfer {
-    /// Unique identifier: "{block_number}-{event_index}".
-    pub id: String,
-    /// ATS identifier that was transferred.
-    pub ats_id: u64,
-    /// Previous owner account.
-    pub old_owner: AccountId,
-    /// New owner account.
-    pub new_owner: AccountId,
-    /// Block number of the transfer.
-    pub block_number: u64,
-    /// Event index within the block.
-    pub event_index: u32,
-    /// Timestamp of the transfer.
-    pub timestamp: Option<DateTime<Utc>>,
-}
-
-/// A verification key update event.
-///
-/// Records changes to the ZKP verification key used for claims.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AtsVerificationKeyUpdate {
-    /// Unique identifier: "{block_number}-{event_index}".
-    pub id: String,
-    /// The new verification key bytes.
-    pub vk: Vec<u8>,
-    /// Block number when the key was updated.
-    pub block_number: u64,
-    /// Event index within the block.
-    pub event_index: u32,
-    /// Timestamp of the update.
-    pub timestamp: Option<DateTime<Utc>>,
 }

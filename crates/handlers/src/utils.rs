@@ -106,6 +106,11 @@ pub fn parse_u32(value: &serde_json::Value) -> Option<u32> {
     parse_u64(value).and_then(|v| v.try_into().ok())
 }
 
+/// Parse a u8 from JSON.
+pub fn parse_u8(value: &serde_json::Value) -> Option<u8> {
+    parse_u64(value).and_then(|v| v.try_into().ok())
+}
+
 // =============================================================================
 // Hash/bytes parsing
 // =============================================================================

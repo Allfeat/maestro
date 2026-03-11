@@ -1,21 +1,18 @@
 //! ATS (Allfeat Timestamp) pallet handler bundle.
 //!
 //! This bundle provides indexing support for the Allfeat ATS pallet,
-//! tracking timestamped creative works, their versions, and ownership transfers.
+//! tracking timestamped creative works and their versions.
 //!
 //! # Indexed Events
 //!
-//! - `Ats::ATSRegistered` - New ATS work registrations
-//! - `Ats::ATSUpdated` - New versions of existing ATS works
-//! - `Ats::ATSClaimed` - Ownership transfers via ZKP verification
-//! - `Ats::VerificationKeyUpdated` - ZKP verification key updates
+//! - `Ats::AtsCreated` - New ATS work registrations
+//! - `Ats::AtsUpdated` - New versions of existing ATS works
+//! - `Ats::AtsRevoked` - ATS work revocations
 //!
 //! # Database Tables
 //!
 //! - `ats_works` - Main ATS registry with current ownership
-//! - `ats_versions` - Version history with hash commitments
-//! - `ats_ownership_transfers` - Ownership claim history
-//! - `ats_verification_keys` - ZKP verification key history
+//! - `ats_versions` - Version history with commitments
 //!
 //! # Usage
 //!
@@ -40,15 +37,12 @@ use crate::HandlerBundle;
 
 pub use graphql::AtsQuery;
 pub use handler::AtsHandler;
-pub use models::{AtsOwnershipTransfer, AtsVerificationKeyUpdate, AtsVersion, AtsWork};
-pub use storage::{
-    AtsStorage, AtsTransferFilter, AtsWorkFilter, PgAtsStorage, MIGRATIONS,
-};
+pub use models::{AtsVersion, AtsWork};
+pub use storage::{AtsStorage, AtsWorkFilter, PgAtsStorage, MIGRATIONS};
 
 /// Handler bundle for the ATS (Allfeat Timestamp) pallet.
 ///
-/// Tracks timestamped creative works, their versions, ownership transfers,
-/// and ZKP verification key updates.
+/// Tracks timestamped creative works and their versions.
 pub struct AtsBundle {
     pool: PgPool,
 }
@@ -82,8 +76,6 @@ impl HandlerBundle for AtsBundle {
     fn tables_to_purge(&self) -> &'static [&'static str] {
         // Order matters: children tables before parents (due to foreign keys)
         &[
-            "ats_verification_keys",
-            "ats_ownership_transfers",
             "ats_versions",
             "ats_works",
         ]

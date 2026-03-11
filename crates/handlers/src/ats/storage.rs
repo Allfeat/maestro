@@ -7,7 +7,7 @@ use maestro_core::error::{StorageError, StorageResult};
 use maestro_core::models::AccountId;
 use maestro_core::ports::{Connection, Cursor, Edge, OrderDirection, PageInfo, Pagination};
 
-use super::models::{AtsOwnershipTransfer, AtsVerificationKeyUpdate, AtsVersion, AtsWork};
+use super::models::{AtsVersion, AtsWork};
 
 /// Filter options for ATS work queries.
 #[derive(Debug, Clone, Default)]
@@ -23,17 +23,7 @@ pub struct AtsWorkFilter {
 #[derive(Debug, Clone, Default)]
 pub struct AtsVersionFilter {
     pub ats_id: Option<u64>,
-    pub hash_commitment: Option<[u8; 32]>,
-}
-
-/// Filter options for ownership transfer queries.
-#[derive(Debug, Clone, Default)]
-pub struct AtsTransferFilter {
-    pub ats_id: Option<u64>,
-    pub old_owner: Option<AccountId>,
-    pub new_owner: Option<AccountId>,
-    /// Either old_owner or new_owner
-    pub account: Option<AccountId>,
+    pub commitment: Option<[u8; 32]>,
 }
 
 /// Storage trait for ATS pallet data.
@@ -48,9 +38,6 @@ pub trait AtsStorage: Send + Sync {
 
     /// Get an ATS work by ID.
     async fn get_ats_work(&self, id: u64) -> StorageResult<Option<AtsWork>>;
-
-    /// Update the owner of an ATS work.
-    async fn update_ats_owner(&self, id: u64, owner: &AccountId) -> StorageResult<()>;
 
     /// Update the latest version of an ATS work.
     async fn update_ats_latest_version(&self, id: u64, version: u32) -> StorageResult<()>;
@@ -85,45 +72,18 @@ pub trait AtsStorage: Send + Sync {
     /// List all versions for an ATS.
     async fn list_versions_for_ats(&self, ats_id: u64) -> StorageResult<Vec<AtsVersion>>;
 
-    /// Find an ATS version by hash commitment.
-    async fn find_by_hash_commitment(
+    /// Find an ATS version by commitment.
+    async fn find_by_commitment(
         &self,
         hash: &[u8; 32],
     ) -> StorageResult<Option<AtsVersion>>;
 
     // -------------------------------------------------------------------------
-    // Ownership transfer operations
+    // Revocation
     // -------------------------------------------------------------------------
 
-    /// Insert an ownership transfer record.
-    async fn insert_ownership_transfer(
-        &self,
-        transfer: &AtsOwnershipTransfer,
-    ) -> StorageResult<()>;
-
-    /// List ownership transfers for an ATS.
-    async fn list_transfers_for_ats(&self, ats_id: u64) -> StorageResult<Vec<AtsOwnershipTransfer>>;
-
-    /// List ownership transfers with pagination and filtering.
-    async fn list_transfers(
-        &self,
-        filter: AtsTransferFilter,
-        pagination: Pagination,
-        order: OrderDirection,
-    ) -> StorageResult<Connection<AtsOwnershipTransfer>>;
-
-    // -------------------------------------------------------------------------
-    // Verification key operations
-    // -------------------------------------------------------------------------
-
-    /// Insert a verification key update record.
-    async fn insert_vk_update(&self, update: &AtsVerificationKeyUpdate) -> StorageResult<()>;
-
-    /// Get the latest verification key.
-    async fn get_latest_vk(&self) -> StorageResult<Option<AtsVerificationKeyUpdate>>;
-
-    /// List all verification key updates.
-    async fn list_vk_updates(&self) -> StorageResult<Vec<AtsVerificationKeyUpdate>>;
+    /// Delete an ATS work by ID (CASCADE deletes versions).
+    async fn delete_ats_work(&self, id: u64) -> StorageResult<()>;
 
     // -------------------------------------------------------------------------
     // Reorg handling
@@ -184,17 +144,6 @@ impl AtsStorage for PgAtsStorage {
         .map_err(|e| StorageError::QueryError(e.to_string()))?;
 
         row.map(AtsWorkRow::into_model).transpose()
-    }
-
-    async fn update_ats_owner(&self, id: u64, owner: &AccountId) -> StorageResult<()> {
-        sqlx::query("UPDATE ats_works SET owner = $1 WHERE id = $2")
-            .bind(&owner.0[..])
-            .bind(id as i64)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
-
-        Ok(())
     }
 
     async fn update_ats_latest_version(&self, id: u64, version: u32) -> StorageResult<()> {
@@ -365,17 +314,18 @@ impl AtsStorage for PgAtsStorage {
         sqlx::query(
             r#"
             INSERT INTO ats_versions (
-                id, ats_id, version, hash_commitment,
+                id, ats_id, version, commitment, protocol_version,
                 registered_at_block, registered_at_timestamp, event_index
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (ats_id, version) DO NOTHING
             "#,
         )
         .bind(&version.id)
         .bind(version.ats_id as i64)
         .bind(version.version as i32)
-        .bind(&version.hash_commitment[..])
+        .bind(&version.commitment[..])
+        .bind(version.protocol_version as i16)
         .bind(version.registered_at_block as i64)
         .bind(version.registered_at_timestamp)
         .bind(version.event_index as i32)
@@ -389,7 +339,7 @@ impl AtsStorage for PgAtsStorage {
     async fn get_ats_version(&self, ats_id: u64, version: u32) -> StorageResult<Option<AtsVersion>> {
         let row = sqlx::query_as::<_, AtsVersionRow>(
             r#"
-            SELECT id, ats_id, version, hash_commitment,
+            SELECT id, ats_id, version, commitment, protocol_version,
                    registered_at_block, registered_at_timestamp, event_index
             FROM ats_versions
             WHERE ats_id = $1 AND version = $2
@@ -407,7 +357,7 @@ impl AtsStorage for PgAtsStorage {
     async fn list_versions_for_ats(&self, ats_id: u64) -> StorageResult<Vec<AtsVersion>> {
         let rows = sqlx::query_as::<_, AtsVersionRow>(
             r#"
-            SELECT id, ats_id, version, hash_commitment,
+            SELECT id, ats_id, version, commitment, protocol_version,
                    registered_at_block, registered_at_timestamp, event_index
             FROM ats_versions
             WHERE ats_id = $1
@@ -422,16 +372,16 @@ impl AtsStorage for PgAtsStorage {
         rows.into_iter().map(AtsVersionRow::into_model).collect()
     }
 
-    async fn find_by_hash_commitment(
+    async fn find_by_commitment(
         &self,
         hash: &[u8; 32],
     ) -> StorageResult<Option<AtsVersion>> {
         let row = sqlx::query_as::<_, AtsVersionRow>(
             r#"
-            SELECT id, ats_id, version, hash_commitment,
+            SELECT id, ats_id, version, commitment, protocol_version,
                    registered_at_block, registered_at_timestamp, event_index
             FROM ats_versions
-            WHERE hash_commitment = $1
+            WHERE commitment = $1
             ORDER BY registered_at_block DESC
             LIMIT 1
             "#,
@@ -445,216 +395,17 @@ impl AtsStorage for PgAtsStorage {
     }
 
     // -------------------------------------------------------------------------
-    // Ownership transfer operations
+    // Revocation
     // -------------------------------------------------------------------------
 
-    async fn insert_ownership_transfer(
-        &self,
-        transfer: &AtsOwnershipTransfer,
-    ) -> StorageResult<()> {
-        sqlx::query(
-            r#"
-            INSERT INTO ats_ownership_transfers (
-                id, ats_id, old_owner, new_owner, block_number, event_index, timestamp
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (block_number, event_index) DO NOTHING
-            "#,
-        )
-        .bind(&transfer.id)
-        .bind(transfer.ats_id as i64)
-        .bind(&transfer.old_owner.0[..])
-        .bind(&transfer.new_owner.0[..])
-        .bind(transfer.block_number as i64)
-        .bind(transfer.event_index as i32)
-        .bind(transfer.timestamp)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+    async fn delete_ats_work(&self, id: u64) -> StorageResult<()> {
+        sqlx::query("DELETE FROM ats_works WHERE id = $1")
+            .bind(id as i64)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| StorageError::QueryError(e.to_string()))?;
 
         Ok(())
-    }
-
-    async fn list_transfers_for_ats(&self, ats_id: u64) -> StorageResult<Vec<AtsOwnershipTransfer>> {
-        let rows = sqlx::query_as::<_, AtsTransferRow>(
-            r#"
-            SELECT id, ats_id, old_owner, new_owner, block_number, event_index, timestamp
-            FROM ats_ownership_transfers
-            WHERE ats_id = $1
-            ORDER BY block_number ASC, event_index ASC
-            "#,
-        )
-        .bind(ats_id as i64)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
-
-        rows.into_iter().map(AtsTransferRow::into_model).collect()
-    }
-
-    async fn list_transfers(
-        &self,
-        filter: AtsTransferFilter,
-        pagination: Pagination,
-        order: OrderDirection,
-    ) -> StorageResult<Connection<AtsOwnershipTransfer>> {
-        let limit = pagination.first.or(pagination.last).unwrap_or(20).min(100);
-        let order_sql = match order {
-            OrderDirection::Asc => "ASC",
-            OrderDirection::Desc => "DESC",
-        };
-
-        let mut conditions = Vec::new();
-        let mut param_idx = 1;
-
-        if filter.ats_id.is_some() {
-            conditions.push(format!("ats_id = ${}", param_idx));
-            param_idx += 1;
-        }
-        if filter.old_owner.is_some() {
-            conditions.push(format!("old_owner = ${}", param_idx));
-            param_idx += 1;
-        }
-        if filter.new_owner.is_some() {
-            conditions.push(format!("new_owner = ${}", param_idx));
-            param_idx += 1;
-        }
-        if filter.account.is_some() {
-            conditions.push(format!(
-                "(old_owner = ${} OR new_owner = ${})",
-                param_idx, param_idx
-            ));
-            // param_idx += 1; // not needed, last param
-        }
-
-        let where_clause = if conditions.is_empty() {
-            String::new()
-        } else {
-            format!("WHERE {}", conditions.join(" AND "))
-        };
-
-        let query = format!(
-            r#"
-            SELECT id, ats_id, old_owner, new_owner, block_number, event_index, timestamp
-            FROM ats_ownership_transfers
-            {}
-            ORDER BY block_number {}, event_index {}
-            LIMIT {}
-            "#,
-            where_clause,
-            order_sql,
-            order_sql,
-            limit + 1
-        );
-
-        let rows: Vec<AtsTransferRow> = if conditions.is_empty() {
-            sqlx::query_as(&query)
-                .fetch_all(&self.pool)
-                .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?
-        } else {
-            let mut q = sqlx::query_as::<_, AtsTransferRow>(&query);
-            if let Some(ats_id) = filter.ats_id {
-                q = q.bind(ats_id as i64);
-            }
-            if let Some(ref owner) = filter.old_owner {
-                q = q.bind(&owner.0[..]);
-            }
-            if let Some(ref owner) = filter.new_owner {
-                q = q.bind(&owner.0[..]);
-            }
-            if let Some(ref account) = filter.account {
-                q = q.bind(&account.0[..]);
-            }
-            q.fetch_all(&self.pool)
-                .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?
-        };
-
-        let has_more = rows.len() > limit as usize;
-        let transfers: Vec<AtsOwnershipTransfer> = rows
-            .into_iter()
-            .take(limit as usize)
-            .map(AtsTransferRow::into_model)
-            .collect::<StorageResult<Vec<_>>>()?;
-
-        let edges: Vec<Edge<AtsOwnershipTransfer>> = transfers
-            .into_iter()
-            .map(|t| Edge {
-                cursor: Cursor {
-                    value: t.id.clone(),
-                },
-                node: t,
-            })
-            .collect();
-
-        let page_info = PageInfo {
-            has_next_page: has_more,
-            has_previous_page: pagination.after.is_some(),
-            start_cursor: edges.first().map(|e| e.cursor.clone()),
-            end_cursor: edges.last().map(|e| e.cursor.clone()),
-        };
-
-        Ok(Connection {
-            edges,
-            page_info,
-            total_count: None,
-        })
-    }
-
-    // -------------------------------------------------------------------------
-    // Verification key operations
-    // -------------------------------------------------------------------------
-
-    async fn insert_vk_update(&self, update: &AtsVerificationKeyUpdate) -> StorageResult<()> {
-        sqlx::query(
-            r#"
-            INSERT INTO ats_verification_keys (id, vk, block_number, event_index, timestamp)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (block_number, event_index) DO NOTHING
-            "#,
-        )
-        .bind(&update.id)
-        .bind(&update.vk)
-        .bind(update.block_number as i64)
-        .bind(update.event_index as i32)
-        .bind(update.timestamp)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
-
-        Ok(())
-    }
-
-    async fn get_latest_vk(&self) -> StorageResult<Option<AtsVerificationKeyUpdate>> {
-        let row = sqlx::query_as::<_, AtsVkRow>(
-            r#"
-            SELECT id, vk, block_number, event_index, timestamp
-            FROM ats_verification_keys
-            ORDER BY block_number DESC, event_index DESC
-            LIMIT 1
-            "#,
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
-
-        Ok(row.map(AtsVkRow::into_model))
-    }
-
-    async fn list_vk_updates(&self) -> StorageResult<Vec<AtsVerificationKeyUpdate>> {
-        let rows = sqlx::query_as::<_, AtsVkRow>(
-            r#"
-            SELECT id, vk, block_number, event_index, timestamp
-            FROM ats_verification_keys
-            ORDER BY block_number ASC, event_index ASC
-            "#,
-        )
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
-
-        Ok(rows.into_iter().map(AtsVkRow::into_model).collect())
     }
 
     // -------------------------------------------------------------------------
@@ -665,21 +416,6 @@ impl AtsStorage for PgAtsStorage {
         let mut total_deleted = 0u64;
 
         // Delete in order of dependencies (children first)
-        let vk_result = sqlx::query("DELETE FROM ats_verification_keys WHERE block_number >= $1")
-            .bind(from_block as i64)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
-        total_deleted += vk_result.rows_affected();
-
-        let transfers_result =
-            sqlx::query("DELETE FROM ats_ownership_transfers WHERE block_number >= $1")
-                .bind(from_block as i64)
-                .execute(&self.pool)
-                .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?;
-        total_deleted += transfers_result.rows_affected();
-
         let versions_result =
             sqlx::query("DELETE FROM ats_versions WHERE registered_at_block >= $1")
                 .bind(from_block as i64)
@@ -729,7 +465,8 @@ struct AtsVersionRow {
     id: String,
     ats_id: i64,
     version: i32,
-    hash_commitment: Vec<u8>,
+    commitment: Vec<u8>,
+    protocol_version: i16,
     registered_at_block: i64,
     registered_at_timestamp: Option<chrono::DateTime<chrono::Utc>>,
     event_index: i32,
@@ -741,57 +478,12 @@ impl AtsVersionRow {
             id: self.id,
             ats_id: self.ats_id as u64,
             version: self.version as u32,
-            hash_commitment: bytes_to_hash32(self.hash_commitment, "ats_version.hash_commitment")?,
+            commitment: bytes_to_hash32(self.commitment, "ats_version.commitment")?,
+            protocol_version: self.protocol_version as u8,
             registered_at_block: self.registered_at_block as u64,
             registered_at_timestamp: self.registered_at_timestamp,
             event_index: self.event_index as u32,
         })
-    }
-}
-
-#[derive(sqlx::FromRow)]
-struct AtsTransferRow {
-    id: String,
-    ats_id: i64,
-    old_owner: Vec<u8>,
-    new_owner: Vec<u8>,
-    block_number: i64,
-    event_index: i32,
-    timestamp: Option<chrono::DateTime<chrono::Utc>>,
-}
-
-impl AtsTransferRow {
-    fn into_model(self) -> StorageResult<AtsOwnershipTransfer> {
-        Ok(AtsOwnershipTransfer {
-            id: self.id,
-            ats_id: self.ats_id as u64,
-            old_owner: AccountId(bytes_to_hash32(self.old_owner, "ats_transfer.old_owner")?),
-            new_owner: AccountId(bytes_to_hash32(self.new_owner, "ats_transfer.new_owner")?),
-            block_number: self.block_number as u64,
-            event_index: self.event_index as u32,
-            timestamp: self.timestamp,
-        })
-    }
-}
-
-#[derive(sqlx::FromRow)]
-struct AtsVkRow {
-    id: String,
-    vk: Vec<u8>,
-    block_number: i64,
-    event_index: i32,
-    timestamp: Option<chrono::DateTime<chrono::Utc>>,
-}
-
-impl AtsVkRow {
-    fn into_model(self) -> AtsVerificationKeyUpdate {
-        AtsVerificationKeyUpdate {
-            id: self.id,
-            vk: self.vk,
-            block_number: self.block_number as u64,
-            event_index: self.event_index as u32,
-            timestamp: self.timestamp,
-        }
     }
 }
 
@@ -875,5 +567,12 @@ CREATE INDEX idx_ats_vk_block ON ats_verification_keys(block_number);
     // Migration 1: Add index on created_at_timestamp for date range filtering
     r#"
 CREATE INDEX IF NOT EXISTS idx_ats_works_created_at_ts ON ats_works(created_at_timestamp);
+"#,
+    // Migration 2: Adapt to new pallet-ats (remove ownership/VK, add protocol_version, rename hash_commitment)
+    r#"
+DROP TABLE IF EXISTS ats_verification_keys;
+DROP TABLE IF EXISTS ats_ownership_transfers;
+ALTER TABLE ats_versions ADD COLUMN IF NOT EXISTS protocol_version SMALLINT NOT NULL DEFAULT 1;
+ALTER TABLE ats_versions RENAME COLUMN hash_commitment TO commitment;
 "#,
 ];

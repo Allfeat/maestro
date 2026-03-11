@@ -27,20 +27,14 @@
       in
       {
         devShells.default = pkgs.mkShell {
-          packages =
-            with pkgs;
-            [
-              (rust-bin.fromRustupToolchainFile ./rust-toolchain.toml)
-              clang
-              protobuf
-              openssl
-              pkg-config
-              subxt
-            ]
-            ++ lib.optionals stdenv.hostPlatform.isDarwin [
-              darwin.apple_sdk.frameworks.Security
-              darwin.apple_sdk.frameworks.SystemConfiguration
-            ];
+          packages = with pkgs; [
+            (rust-bin.fromRustupToolchainFile ./rust-toolchain.toml)
+            clang
+            protobuf
+            openssl
+            pkg-config
+            subxt
+          ];
         };
       }
     );
