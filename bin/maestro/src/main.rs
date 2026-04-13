@@ -24,8 +24,8 @@ use tracing_subscriber::{EnvFilter, fmt};
 use async_graphql::{EmptyMutation, EmptySubscription, MergedObject, Schema};
 use maestro_core::error::IndexerError;
 use maestro_core::metrics::init_metrics;
-use maestro_core::ports::{BlockMode, BlockSource, StorageReader};
-use maestro_core::services::{IndexerConfig, IndexerService};
+use maestro_core::ports::{BlockSource, StorageReader};
+use maestro_core::services::IndexerService;
 use maestro_graphql::{CoreQuery, ServerConfig, serve_with_shutdown};
 use maestro_handlers::ats::{AtsQuery, AtsStorage, PgAtsStorage};
 use maestro_handlers::balances::{BalancesQuery, BalancesStorage, PgBalancesStorage};
@@ -34,88 +34,9 @@ use maestro_handlers::{AtsBundle, BalancesBundle, BundleRegistry, MiddsBundle};
 use maestro_storage::{Database, DatabaseConfig, PgRepositories};
 use maestro_substrate::{SubstrateClient, SubstrateClientConfig};
 
-/// Maestro CLI - Allfeat Blockchain Indexer.
-#[derive(Parser, Debug)]
-#[command(name = "maestro")]
-#[command(about = "Maestro - Substrate blockchain indexer by Allfeat")]
-#[command(version)]
-struct Cli {
-    /// Substrate node WebSocket URL.
-    #[arg(long, env = "WS_URL", default_value = "ws://127.0.0.1:9944")]
-    ws_url: String,
+mod cli;
 
-    /// PostgreSQL database URL.
-    #[arg(
-        long,
-        env = "DATABASE_URL",
-        default_value = "postgres://localhost/maestro"
-    )]
-    database_url: String,
-
-    /// GraphQL server port.
-    #[arg(long, env = "GRAPHQL_PORT", default_value = "4000")]
-    graphql_port: u16,
-
-    /// Prometheus metrics port.
-    #[arg(long, env = "METRICS_PORT", default_value = "9090")]
-    metrics_port: u16,
-
-    /// Enable JSON log output.
-    #[arg(long, env = "JSON_LOGS", default_value = "false", value_parser = parse_bool)]
-    json_logs: bool,
-
-    /// Run database migrations and exit.
-    #[arg(long, env = "MIGRATE_ONLY", default_value = "false", value_parser = parse_bool)]
-    migrate_only: bool,
-
-    /// Purge all indexed data from the database and exit.
-    ///
-    /// This will delete all blocks, extrinsics, events, transfers, and reset
-    /// the indexer cursor. Schema/migrations are preserved.
-    #[arg(long, env = "PURGE", default_value = "false", value_parser = parse_bool)]
-    purge: bool,
-
-    /// Skip confirmation prompt for destructive operations (like --purge).
-    #[arg(long, short = 'y', env = "YES", default_value = "false", value_parser = parse_bool)]
-    yes: bool,
-
-    /// Log level (trace, debug, info, warn, error).
-    #[arg(long, env = "LOG_LEVEL", default_value = "info")]
-    log_level: String,
-
-    /// Block subscription mode: finalized (safe) or best (fast but may reorg).
-    #[arg(long, env = "BLOCK_MODE", default_value = "finalized", value_parser = parse_block_mode)]
-    block_mode: BlockMode,
-
-    /// Export GraphQL schema (SDL format) to stdout and exit.
-    /// Useful for code generation tools (cynic, graphql-client, etc.)
-    #[arg(long, env = "EXPORT_SCHEMA", default_value = "false", value_parser = parse_bool)]
-    export_schema: bool,
-}
-
-/// Parse block mode from string.
-fn parse_block_mode(s: &str) -> Result<BlockMode, String> {
-    match s.to_lowercase().as_str() {
-        "finalized" => Ok(BlockMode::Finalized),
-        "best" => Ok(BlockMode::Best),
-        _ => Err(format!(
-            "Invalid block mode '{}'. Use 'finalized' or 'best'.",
-            s
-        )),
-    }
-}
-
-/// Parse boolean from string (for env var support).
-fn parse_bool(s: &str) -> Result<bool, String> {
-    match s.to_lowercase().as_str() {
-        "true" | "1" | "yes" | "on" => Ok(true),
-        "false" | "0" | "no" | "off" => Ok(false),
-        _ => Err(format!(
-            "Invalid boolean '{}'. Use 'true', 'false', '1', '0', 'yes', 'no'.",
-            s
-        )),
-    }
-}
+use cli::Cli;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -255,11 +176,7 @@ async fn main() -> Result<()> {
     // Convert to handler registry for the indexer
     let handlers = Arc::new(bundle_registry.into_handler_registry());
 
-    let indexer_config = IndexerConfig {
-        chain_id: hex::encode(genesis_hash.0),
-        block_mode: cli.block_mode,
-        ..Default::default()
-    };
+    let indexer_config = cli.to_indexer_config(hex::encode(genesis_hash.0));
 
     let indexer = IndexerService::new(
         indexer_config,
