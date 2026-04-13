@@ -39,7 +39,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use maestro_core::error::StorageResult;
+use maestro_core::error::{StorageError, StorageResult};
 use maestro_core::models::ExtrinsicStatus;
 use maestro_core::ports::{
     BlockData, BlockRepository, CursorRepository, EventRepository, ExtrinsicRepository,
@@ -192,25 +192,89 @@ impl Repositories for PgRepositories {
             .query_err("insert event")?;
         }
 
-        // Interim (replaced in Task 13 with the branched logic):
-        sqlx::query(
+        // Cursor branching. persist_block_atomic runs inside a transaction, so
+        // `SELECT ... FOR UPDATE` pins the row until we commit or roll back.
+        let existing: Option<(i64, i64)> = sqlx::query_as::<_, (i64, i64)>(
             r#"
-            INSERT INTO indexer_cursor (chain_id, first_indexed_block, last_indexed_block, last_indexed_hash, updated_at)
-            VALUES ($1,
-                    COALESCE((SELECT first_indexed_block FROM indexer_cursor WHERE chain_id = $1), $2),
-                    $2, $3, NOW())
-            ON CONFLICT (chain_id) DO UPDATE SET
-                last_indexed_block = EXCLUDED.last_indexed_block,
-                last_indexed_hash  = EXCLUDED.last_indexed_hash,
-                updated_at         = EXCLUDED.updated_at
+            SELECT first_indexed_block, last_indexed_block
+            FROM indexer_cursor
+            WHERE chain_id = $1
+            FOR UPDATE
             "#,
         )
         .bind(data.chain_id)
-        .bind(data.block.number as i64)
-        .bind(&data.block.hash.0[..])
-        .execute(&mut *tx)
+        .fetch_optional(&mut *tx)
         .await
-        .query_err("update cursor (interim)")?;
+        .query_err("select cursor for update")?;
+
+        let block_num = data.block.number as i64;
+
+        match existing {
+            None => {
+                // First block ever for this chain. Initialize range [n, n].
+                sqlx::query(
+                    r#"
+                    INSERT INTO indexer_cursor
+                        (chain_id, first_indexed_block, last_indexed_block, last_indexed_hash, updated_at)
+                    VALUES ($1, $2, $2, $3, NOW())
+                    "#,
+                )
+                .bind(data.chain_id)
+                .bind(block_num)
+                .bind(&data.block.hash.0[..])
+                .execute(&mut *tx)
+                .await
+                .query_err("insert initial cursor")?;
+            }
+            Some((_first, last)) if block_num == last + 1 => {
+                // Forward extension (live stream or upward backfill).
+                sqlx::query(
+                    r#"
+                    UPDATE indexer_cursor
+                    SET last_indexed_block = $1,
+                        last_indexed_hash  = $2,
+                        updated_at         = NOW()
+                    WHERE chain_id = $3
+                    "#,
+                )
+                .bind(block_num)
+                .bind(&data.block.hash.0[..])
+                .bind(data.chain_id)
+                .execute(&mut *tx)
+                .await
+                .query_err("extend cursor upward")?;
+            }
+            Some((first, _last)) if block_num + 1 == first => {
+                // Downward gap-fill. `last_indexed_hash` is NOT touched — it tracks the tip.
+                sqlx::query(
+                    r#"
+                    UPDATE indexer_cursor
+                    SET first_indexed_block = $1,
+                        updated_at          = NOW()
+                    WHERE chain_id = $2
+                    "#,
+                )
+                .bind(block_num)
+                .bind(data.chain_id)
+                .execute(&mut *tx)
+                .await
+                .query_err("extend cursor downward")?;
+            }
+            Some((first, last)) if block_num >= first && block_num <= last => {
+                // Already inside the range. Idempotent re-process (e.g. live-loop resume
+                // race). Do nothing to the cursor; the block data was still upserted
+                // above, preserving write idempotency.
+                let _ = (first, last);
+                // (bindings kept for pattern exhaustiveness; no-op intentional)
+            }
+            Some((first, last)) => {
+                return Err(StorageError::CursorGapViolation {
+                    block: block_num as u64,
+                    first: first as u64,
+                    last: last as u64,
+                });
+            }
+        }
 
         tx.commit().await.tx_err("commit persist_block_atomic")?;
 
