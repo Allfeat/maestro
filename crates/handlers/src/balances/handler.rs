@@ -1,37 +1,19 @@
-//! Handler for the Balances pallet.
-//!
-//! This handler processes events from the Substrate Balances pallet and extracts
-//! transfer information for indexing.
-//!
-//! # Supported Events
-//!
-//! - `Transfer`: Token transfer between accounts
-
+//! Handler for the Substrate Balances pallet — indexes `Transfer` events.
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use tracing::warn;
 
+use super::models::Transfer;
+use super::storage::BalancesStorage;
+use crate::utils::{extract_field, parse_account, parse_amount};
 use maestro_core::error::StorageResult;
 use maestro_core::events::EventBus;
 use maestro_core::models::Block;
 use maestro_core::ports::{PalletHandlerExt, RawEvent, RawExtrinsic};
 
-use super::models::Transfer;
-use super::storage::BalancesStorage;
-use crate::utils::{extract_field, parse_account, parse_amount};
-
-// =============================================================================
-// Handler
-// =============================================================================
-
-/// Handler for the Balances pallet.
-///
-/// Extracts `Transfer` events into `Transfer` domain models and persists them
-/// via its injected storage. Orchestration (`handle_event`, `on_block_end`)
-/// and event emission (`EventProcessed`, `Persisted`, `Error`) come for free
-/// from the blanket `impl<H: PalletHandlerExt> PalletHandler for H` in
-/// `maestro-core`.
+/// Parses `Balances::Transfer` events into [`Transfer`] models; orchestration
+/// and `HandlerEvent` emission come from `impl PalletHandler for H: PalletHandlerExt`.
 pub struct BalancesHandler {
     storage: Arc<dyn BalancesStorage>,
     bus: EventBus,
@@ -72,36 +54,27 @@ impl PalletHandlerExt for BalancesHandler {
         if event.name != "Transfer" {
             return None;
         }
-
         let data = &event.data;
-
+        let warn_missing = |field: &str| {
+            warn!(
+                block = block.number,
+                event = event.index,
+                "Failed to parse '{}' in Transfer",
+                field,
+            );
+        };
         let from = extract_field(data, &["from", "who"], 0, parse_account).or_else(|| {
-            warn!(
-                block = block.number,
-                event = event.index,
-                "Failed to parse 'from' in Transfer"
-            );
+            warn_missing("from");
             None
         })?;
-
         let to = extract_field(data, &["to", "dest"], 1, parse_account).or_else(|| {
-            warn!(
-                block = block.number,
-                event = event.index,
-                "Failed to parse 'to' in Transfer"
-            );
+            warn_missing("to");
             None
         })?;
-
         let amount = extract_field(data, &["amount", "value"], 2, parse_amount).or_else(|| {
-            warn!(
-                block = block.number,
-                event = event.index,
-                "Failed to parse 'amount' in Transfer"
-            );
+            warn_missing("amount");
             None
         })?;
-
         Some(Transfer {
             id: format!("{}-{}", block.number, event.index),
             block_number: block.number,
