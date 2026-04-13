@@ -34,3 +34,4 @@ metrics.workspace = true
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+metrics-util = "0.19"
