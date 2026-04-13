@@ -37,5 +37,8 @@
 //! [`BlockSource`]: maestro_core::ports::BlockSource
 
 mod client;
+mod decode;
+mod scale_json;
+mod storage;
 
 pub use client::{SubstrateClient, SubstrateClientConfig};
