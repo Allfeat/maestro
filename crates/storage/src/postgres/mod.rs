@@ -195,15 +195,17 @@ impl Repositories for PgRepositories {
         // Update cursor
         sqlx::query(
             r#"
-            INSERT INTO indexer_cursor (chain_id, last_indexed_block, last_indexed_hash, updated_at)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO indexer_cursor (chain_id, first_indexed_block, last_indexed_block, last_indexed_hash, updated_at)
+            VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (chain_id) DO UPDATE SET
+                first_indexed_block = EXCLUDED.first_indexed_block,
                 last_indexed_block = EXCLUDED.last_indexed_block,
                 last_indexed_hash = EXCLUDED.last_indexed_hash,
                 updated_at = EXCLUDED.updated_at
             "#,
         )
         .bind(&data.cursor.chain_id)
+        .bind(data.cursor.first_indexed_block as i64)
         .bind(data.cursor.last_indexed_block as i64)
         .bind(&data.cursor.last_indexed_hash.0[..])
         .bind(data.cursor.updated_at)

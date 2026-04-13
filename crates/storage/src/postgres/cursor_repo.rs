@@ -29,7 +29,7 @@ impl CursorRepository for PgCursorRepository {
     async fn get_cursor(&self, chain_id: &str) -> StorageResult<Option<IndexerCursor>> {
         let row = sqlx::query_as::<_, CursorRow>(
             r#"
-            SELECT chain_id, last_indexed_block, last_indexed_hash, updated_at
+            SELECT chain_id, first_indexed_block, last_indexed_block, last_indexed_hash, updated_at
             FROM indexer_cursor
             WHERE chain_id = $1
             "#,
@@ -45,7 +45,7 @@ impl CursorRepository for PgCursorRepository {
     async fn get_any_cursor(&self) -> StorageResult<Option<IndexerCursor>> {
         let row = sqlx::query_as::<_, CursorRow>(
             r#"
-            SELECT chain_id, last_indexed_block, last_indexed_hash, updated_at
+            SELECT chain_id, first_indexed_block, last_indexed_block, last_indexed_hash, updated_at
             FROM indexer_cursor
             LIMIT 1
             "#,
@@ -60,15 +60,17 @@ impl CursorRepository for PgCursorRepository {
     async fn set_cursor(&self, cursor: &IndexerCursor) -> StorageResult<()> {
         sqlx::query(
             r#"
-            INSERT INTO indexer_cursor (chain_id, last_indexed_block, last_indexed_hash, updated_at)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO indexer_cursor (chain_id, first_indexed_block, last_indexed_block, last_indexed_hash, updated_at)
+            VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (chain_id) DO UPDATE SET
+                first_indexed_block = EXCLUDED.first_indexed_block,
                 last_indexed_block = EXCLUDED.last_indexed_block,
                 last_indexed_hash = EXCLUDED.last_indexed_hash,
                 updated_at = EXCLUDED.updated_at
             "#,
         )
         .bind(&cursor.chain_id)
+        .bind(cursor.first_indexed_block as i64)
         .bind(cursor.last_indexed_block as i64)
         .bind(&cursor.last_indexed_hash.0[..])
         .bind(cursor.updated_at)
@@ -83,6 +85,7 @@ impl CursorRepository for PgCursorRepository {
 #[derive(sqlx::FromRow)]
 struct CursorRow {
     chain_id: String,
+    first_indexed_block: i64,
     last_indexed_block: i64,
     last_indexed_hash: Vec<u8>,
     updated_at: chrono::DateTime<chrono::Utc>,
@@ -92,6 +95,7 @@ impl CursorRow {
     fn into_cursor(self) -> StorageResult<IndexerCursor> {
         Ok(IndexerCursor {
             chain_id: self.chain_id,
+            first_indexed_block: self.first_indexed_block as u64,
             last_indexed_block: self.last_indexed_block as u64,
             last_indexed_hash: BlockHash(bytes_to_hash32(
                 self.last_indexed_hash,

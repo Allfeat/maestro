@@ -447,6 +447,7 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
 
         let cursor = IndexerCursor {
             chain_id: self.config.chain_id.clone(),
+            first_indexed_block: block.number, // will be overwritten by persist_block_atomic's branched logic
             last_indexed_block: block.number,
             last_indexed_hash: block.hash.clone(),
             updated_at: chrono::Utc::now(),

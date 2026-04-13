@@ -203,9 +203,11 @@ pub struct Event {
 pub struct IndexerCursor {
     /// Chain identifier (genesis hash or name).
     pub chain_id: String,
-    /// Last fully indexed block number.
+    /// Lowest block in the contiguous indexed range.
+    pub first_indexed_block: u64,
+    /// Highest block in the contiguous indexed range.
     pub last_indexed_block: u64,
-    /// Last indexed block hash (for reorg detection).
+    /// Last indexed block hash (for reorg detection against the tip).
     pub last_indexed_hash: BlockHash,
     /// Last update timestamp.
     pub updated_at: DateTime<Utc>,
@@ -251,5 +253,18 @@ mod tests {
     fn hash32_invalid_length() {
         let hex = "0x1234"; // Too short
         assert!(BlockHash::from_hex(hex).is_err());
+    }
+
+    #[test]
+    fn indexer_cursor_has_first_indexed_block_field() {
+        let cursor = IndexerCursor {
+            chain_id: "test".into(),
+            first_indexed_block: 10,
+            last_indexed_block: 20,
+            last_indexed_hash: BlockHash([0u8; 32]),
+            updated_at: chrono::Utc::now(),
+        };
+        assert_eq!(cursor.first_indexed_block, 10);
+        assert_eq!(cursor.last_indexed_block, 20);
     }
 }
