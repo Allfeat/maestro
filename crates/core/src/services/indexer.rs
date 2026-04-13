@@ -14,10 +14,11 @@ use crate::metrics::{
     ProcessingTimer, record_block_indexed, record_blocks_deleted, record_handler_error,
     record_reorg_detected,
 };
-use crate::models::{Block, BlockHash, Event, Extrinsic, ExtrinsicStatus};
+use crate::models::{Block, BlockHash, Event, Extrinsic, ExtrinsicStatus, IndexerCursor};
 use crate::ports::{
     BlockData, BlockMode, BlockSource, HandlerOutputs, HandlerRegistry, RawBlock, Repositories,
 };
+use crate::services::backfill::{BackfillPlan, BackfillRunner};
 
 // =============================================================================
 // Configuration
@@ -119,7 +120,7 @@ pub struct IndexerService<S: BlockSource, R: Repositories> {
     handlers: Arc<HandlerRegistry>,
 }
 
-impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
+impl<S: BlockSource + 'static, R: Repositories> IndexerService<S, R> {
     pub fn new(
         config: IndexerConfig,
         block_source: Arc<S>,
@@ -150,18 +151,76 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
             warn!("⚠️  Running in BEST BLOCK mode - data may be reorged!");
         }
 
+        // R5: all startup checks consolidated here.
         self.verify_chain_id().await?;
-        let _last_indexed = self.verify_consistency_on_startup().await?;
+        let existing_cursor = self.verify_consistency_on_startup().await?;
 
-        let head = match self.config.block_mode {
-            BlockMode::Finalized => self.block_source.finalized_head().await?,
-            BlockMode::Best => self.block_source.best_head().await?,
-        };
-        debug!(head = head.number, "Chain head detected");
+        // V14 floor enforcement (§4).
+        let earliest_v14 = self.block_source.earliest_v14_block().await?;
+        self.enforce_v14_floor(earliest_v14)?;
 
-        // Backfill wiring lands in Task 14. For now, go straight to live.
+        // Live-only escape hatch.
+        if self.config.backfill.live_only {
+            self.warn_if_cursor_gap(&existing_cursor).await;
+            return self
+                .run_live_loop(&mut shutdown_rx, self.config.block_mode)
+                .await;
+        }
+
+        // Plan backfill.
+        let tip = self.block_source.finalized_head().await?.number;
+        let plan = BackfillPlan::compute(
+            self.config.backfill.start_block,
+            existing_cursor.as_ref(),
+            tip,
+        );
+
+        if !plan.ranges.is_empty() {
+            info!(ranges = ?plan.ranges, "🕰  Starting backfill");
+            let runner = BackfillRunner::new(
+                self.block_source.clone(),
+                self.config.backfill.clone(),
+                self.config.chain_id.clone(),
+            );
+            for range in plan.ranges {
+                runner
+                    .run_range(range, &mut shutdown_rx, |raw| {
+                        self.backfill_process_block(raw)
+                    })
+                    .await?;
+            }
+            info!("✅ Backfill complete, switching to live stream");
+        }
+
         self.run_live_loop(&mut shutdown_rx, self.config.block_mode)
             .await
+    }
+
+    fn enforce_v14_floor(&self, earliest_v14: u64) -> IndexerResult<()> {
+        if self.config.backfill.start_block < earliest_v14 {
+            return Err(IndexerError::PreV14BlockRequested {
+                requested: self.config.backfill.start_block,
+                earliest_v14,
+            });
+        }
+        Ok(())
+    }
+
+    async fn warn_if_cursor_gap(&self, cursor: &Option<IndexerCursor>) {
+        if let Some(c) = cursor {
+            let tip_res = self.block_source.finalized_head().await;
+            if let Ok(head) = tip_res {
+                let gap = head.number.saturating_sub(c.last_indexed_block);
+                if gap > 1 {
+                    warn!(
+                        cursor_top = c.last_indexed_block,
+                        tip = head.number,
+                        gap,
+                        "⚠️  --live-only with a cursor gap; {gap} blocks will never be filled"
+                    );
+                }
+            }
+        }
     }
 
     /// Verify the connected chain matches any existing indexed data.
@@ -196,7 +255,7 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
 
     /// Verify consistency between stored cursor and chain state on reconnection.
     #[instrument(skip(self))]
-    async fn verify_consistency_on_startup(&self) -> IndexerResult<Option<u64>> {
+    async fn verify_consistency_on_startup(&self) -> IndexerResult<Option<IndexerCursor>> {
         let cursor = self
             .repositories
             .cursor()
@@ -220,27 +279,25 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
             .await?;
 
         match stored_block {
-            Some(block) => {
-                if block.hash != cursor.last_indexed_hash {
-                    warn!(
-                        block = cursor.last_indexed_block,
-                        cursor_hash = %hex::encode(&cursor.last_indexed_hash.0[..8]),
-                        stored_hash = %hex::encode(&block.hash.0[..8]),
-                        "⚠️  Cursor hash mismatch, cleaning up"
-                    );
-                    let deleted = self
-                        .repositories
-                        .delete_from_block_atomic(cursor.last_indexed_block, &self.config.chain_id)
-                        .await?;
-                    info!(deleted = deleted, "🗑️  Cleaned inconsistent data");
-                    record_blocks_deleted(deleted);
-                    return Ok(None);
-                }
+            Some(block) if block.hash == cursor.last_indexed_hash => {
                 debug!(
                     block = cursor.last_indexed_block,
                     "Cursor verified, resuming"
                 );
-                Ok(Some(cursor.last_indexed_block))
+                Ok(Some(cursor))
+            }
+            Some(_) => {
+                warn!(
+                    block = cursor.last_indexed_block,
+                    "⚠️  Cursor hash mismatch, cleaning up"
+                );
+                let deleted = self
+                    .repositories
+                    .delete_from_block_atomic(cursor.last_indexed_block, &self.config.chain_id)
+                    .await?;
+                info!(deleted, "🗑️  Cleaned inconsistent data");
+                record_blocks_deleted(deleted);
+                Ok(None)
             }
             None => {
                 warn!(
@@ -251,7 +308,7 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
                     .repositories
                     .delete_from_block_atomic(0, &self.config.chain_id)
                     .await?;
-                info!(deleted = deleted, "🗑️  Cleaned inconsistent data");
+                info!(deleted, "🗑️  Cleaned inconsistent data");
                 record_blocks_deleted(deleted);
                 Ok(None)
             }
@@ -515,7 +572,6 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
 
     /// Backfill-loop wrapper. No skip, no reorg. Exists for symmetry with
     /// `live_process_block` and to make the intent obvious at the call site.
-    #[allow(dead_code)]
     async fn backfill_process_block(&self, raw_block: RawBlock) -> IndexerResult<()> {
         self.index_single_block(raw_block, IndexMode::Backfill)
             .await
