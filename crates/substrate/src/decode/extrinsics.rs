@@ -6,11 +6,11 @@ use maestro_core::error::{ChainError, ChainResult};
 use maestro_core::metrics::record_decode_error;
 use maestro_core::ports::RawExtrinsic;
 use subxt::PolkadotConfig;
-use subxt::ext::scale_value::Composite;
+use subxt::dynamic::Value;
 
 use crate::client::SubstrateClientAtBlock;
 use crate::decode::events::build_extrinsic_results;
-use crate::scale_json::composite_to_json;
+use crate::scale_json::value_to_json;
 
 pub(crate) async fn decode_extrinsics(
     block: &SubstrateClientAtBlock,
@@ -54,8 +54,8 @@ pub(crate) async fn decode_extrinsics(
         });
 
         let args = ext
-            .decode_call_data_fields_unchecked_as::<Composite<()>>()
-            .map(|composite| composite_to_json(&composite))
+            .decode_call_data_fields_unchecked_as::<Value>()
+            .map(|value| value_to_json(&value))
             .unwrap_or_else(|e| {
                 trace!(
                     index,
