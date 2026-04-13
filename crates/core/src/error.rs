@@ -92,6 +92,11 @@ pub enum StorageError {
     /// Data serialization/deserialization failed.
     #[error("Serialization error: {0}")]
     SerializationError(String),
+
+    /// `persist_block_atomic` was given a block whose number neither extends the
+    /// cursor range upward nor fills its downward boundary.
+    #[error("Cursor gap violation: block {block} does not extend range [{first}, {last}]")]
+    CursorGapViolation { block: u64, first: u64, last: u64 },
 }
 
 // =============================================================================
@@ -184,6 +189,19 @@ pub enum IndexerError {
     /// Unexpected internal error.
     #[error("Internal error: {0}")]
     Internal(String),
+
+    /// Historical backfill aborted because retry budget for a block was exhausted.
+    #[error("Backfill aborted at block {block}: {reason}")]
+    BackfillAborted { block: u64, reason: String },
+
+    /// `--start-block` is below the chain's earliest V14 metadata block.
+    #[error(
+        "Cannot backfill below block {earliest_v14} on this chain — its runtime \
+         uses pre-V14 metadata, which Maestro does not decode. Re-run with \
+         --start-block {earliest_v14} (or higher), or use --live-only to skip \
+         backfill entirely."
+    )]
+    PreV14BlockRequested { requested: u64, earliest_v14: u64 },
 }
 
 // =============================================================================
@@ -234,5 +252,41 @@ mod tests {
         let msg = err.to_string();
         // Les deux hashes doivent être visibles pour le debug
         assert!(msg.contains("0xaaa") && msg.contains("0xbbb"));
+    }
+
+    #[test]
+    fn test_backfill_aborted_display_contains_block_and_reason() {
+        let err = IndexerError::BackfillAborted {
+            block: 12345,
+            reason: "websocket disconnected".into(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("12345"));
+        assert!(msg.contains("websocket disconnected"));
+    }
+
+    #[test]
+    fn test_pre_v14_block_requested_display_names_both_knobs() {
+        let err = IndexerError::PreV14BlockRequested {
+            requested: 1000,
+            earliest_v14: 473291,
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("473291"));
+        assert!(msg.contains("--start-block"));
+        assert!(msg.contains("--live-only"));
+    }
+
+    #[test]
+    fn test_cursor_gap_violation_display_contains_range() {
+        let err = StorageError::CursorGapViolation {
+            block: 999,
+            first: 100,
+            last: 200,
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("999"));
+        assert!(msg.contains("100"));
+        assert!(msg.contains("200"));
     }
 }
