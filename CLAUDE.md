@@ -50,6 +50,10 @@ docker-compose down                   # Stop PostgreSQL
 | `--purge` | `PURGE` | `false` | Purge all indexed data and exit |
 | `-y, --yes` | `YES` | `false` | Skip confirmation prompts |
 | `--export-schema` | `EXPORT_SCHEMA` | `false` | Export GraphQL schema (SDL) and exit |
+| `--start-block` | `START_BLOCK` | `0` | Lowest block number to index (backfill lower bound) |
+| `--live-only` | `LIVE_ONLY` | `false` | Skip backfill, start at current head |
+| `--backfill-concurrency` | `BACKFILL_CONCURRENCY` | `16` | Parallel fetches during backfill |
+| `--backfill-max-retries` | `BACKFILL_MAX_RETRIES` | `5` | Per-block retry cap before abort |
 
 Boolean env vars accept: `true`, `false`, `1`, `0`, `yes`, `no`, `on`, `off`
 
