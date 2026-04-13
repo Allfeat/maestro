@@ -57,6 +57,13 @@ docker-compose down                   # Stop PostgreSQL
 
 Boolean env vars accept: `true`, `false`, `1`, `0`, `yes`, `no`, `on`, `off`
 
+> **Historical backfill requires an archive node.** `--start-block` below the
+> node's pruning window will fail with `BackfillAborted` because the RPC
+> `at_block(n)` call cannot reach pruned state. Run the target node with
+> `--pruning archive` (or `--pruning <large-N>`) if you need to index history
+> older than the default ~256-block pruning window. For live-only indexing
+> (no historical range), a pruned node is fine — use `--live-only`.
+
 ## Architecture
 
 ```

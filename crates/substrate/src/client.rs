@@ -151,7 +151,11 @@ impl BlockSource for SubstrateClient {
                 .await
                 .map_err(|e| ChainError::BlockFetchError {
                     hash: format!("at_block({number})"),
-                    message: e.to_string(),
+                    message: format!(
+                        "{e} (hint: historical blocks require an archive node; \
+                         if the node was started without `--pruning archive`, the \
+                         requested block may have been pruned and cannot be backfilled)"
+                    ),
                 })?;
         decode_raw_block_at(&at_block).await
     }

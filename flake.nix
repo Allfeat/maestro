@@ -34,6 +34,7 @@
             openssl
             pkg-config
             subxt
+            nodejs-slim
           ];
         };
       }
