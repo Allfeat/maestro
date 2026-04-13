@@ -122,13 +122,44 @@ impl StorageReader for SubstrateClient {
 
 #[cfg(test)]
 mod tests {
+    use codec::Encode;
+    use subxt::dynamic::Value;
+
+    /// Reachability guard: the typed-tuple dynamic-storage builder shapes
+    /// used by `read_storage_map_u64` and `read_storage_map` must compile
+    /// against subxt's public trait bounds. If a future subxt release
+    /// restricts the `Keys` type parameter so that these tuples no longer
+    /// satisfy it, this test catches it before the manual smoke run.
+    /// Replaces the pre-refactor `dynamic_storage_map_builder_constructs_for_known_pallet`.
     #[test]
-    fn dynamic_storage_map_builder_constructs_for_known_pallet() {
-        // Reachability check: the subxt dynamic storage builder signature we rely on
-        // in read_storage_map_u64 must compile for a known pallet/item pair.
-        // Catches regressions where the builder shape silently drifts on upgrade.
-        let _query = subxt::dynamic::storage::<Vec<subxt::dynamic::Value>, subxt::dynamic::Value>(
-            "System", "Account",
-        );
+    fn typed_tuple_dynamic_storage_builders_compile() {
+        let _u64_shape = subxt::dynamic::storage::<(u128,), Value>("System", "Account");
+        let _bytes_shape = subxt::dynamic::storage::<(Vec<u8>,), Value>("System", "Account");
+    }
+
+    /// SCALE-framing guard for spec §4.7 R2: a single-element Rust tuple
+    /// SCALE-encodes to the same bytes as its inner value. This pins the
+    /// framing of the new typed-tuple keys at the codec layer, so Task 6
+    /// cannot silently add extra length prefixes or padding. The full
+    /// byte-equivalence check against the pre-refactor `Value::u128` path
+    /// runs against a live runtime in Task 9 (manual smoke).
+    #[test]
+    fn single_element_u128_tuple_encodes_as_plain_u128() {
+        let k: u128 = 0x0123_4567_89ab_cdef_0123_4567_89ab_cdef;
+        let tuple_bytes = (k,).encode();
+        let plain_bytes = k.encode();
+        assert_eq!(tuple_bytes, plain_bytes);
+        assert_eq!(tuple_bytes.len(), 16, "u128 is 16 little-endian bytes");
+    }
+
+    /// Same framing guard, byte-key variant. `Vec<u8>` SCALE-encodes with a
+    /// compact length prefix, and a single-element tuple wrapping it adds
+    /// nothing. Pins the framing for `read_storage_map`.
+    #[test]
+    fn single_element_bytes_tuple_encodes_as_plain_bytes() {
+        let raw: Vec<u8> = (0u8..32).collect();
+        let tuple_bytes = (raw.clone(),).encode();
+        let plain_bytes = raw.encode();
+        assert_eq!(tuple_bytes, plain_bytes);
     }
 }
