@@ -120,6 +120,18 @@ pub struct IndexerService<S: BlockSource, R: Repositories> {
     handlers: Arc<HandlerRegistry>,
 }
 
+/// Pure V14 metadata floor check. Returns `PreV14BlockRequested` if the
+/// requested `start_block` is below the chain's earliest V14 block.
+pub(crate) fn check_v14_floor(start_block: u64, earliest_v14: u64) -> IndexerResult<()> {
+    if start_block < earliest_v14 {
+        return Err(IndexerError::PreV14BlockRequested {
+            requested: start_block,
+            earliest_v14,
+        });
+    }
+    Ok(())
+}
+
 impl<S: BlockSource + 'static, R: Repositories> IndexerService<S, R> {
     pub fn new(
         config: IndexerConfig,
@@ -197,29 +209,36 @@ impl<S: BlockSource + 'static, R: Repositories> IndexerService<S, R> {
     }
 
     fn enforce_v14_floor(&self, earliest_v14: u64) -> IndexerResult<()> {
-        if self.config.backfill.start_block < earliest_v14 {
-            return Err(IndexerError::PreV14BlockRequested {
-                requested: self.config.backfill.start_block,
-                earliest_v14,
-            });
-        }
-        Ok(())
+        check_v14_floor(self.config.backfill.start_block, earliest_v14)
     }
 
     async fn warn_if_cursor_gap(&self, cursor: &Option<IndexerCursor>) {
-        if let Some(c) = cursor {
-            let tip_res = self.block_source.finalized_head().await;
-            if let Ok(head) = tip_res {
-                let gap = head.number.saturating_sub(c.last_indexed_block);
-                if gap > 1 {
-                    warn!(
-                        cursor_top = c.last_indexed_block,
-                        tip = head.number,
-                        gap,
-                        "⚠️  --live-only with a cursor gap; {gap} blocks will never be filled"
-                    );
-                }
+        let Some(c) = cursor else { return };
+
+        // Tip-side gap: blocks between cursor top and current chain head.
+        if let Ok(head) = self.block_source.finalized_head().await {
+            let gap = head.number.saturating_sub(c.last_indexed_block);
+            if gap > 1 {
+                warn!(
+                    cursor_top = c.last_indexed_block,
+                    tip = head.number,
+                    gap,
+                    "⚠️  --live-only with a cursor gap; {gap} blocks will never be filled"
+                );
             }
+        }
+
+        // Floor-side gap: blocks below cursor floor that --start-block wanted.
+        let start_block = self.config.backfill.start_block;
+        if c.first_indexed_block > start_block {
+            let gap = c.first_indexed_block - start_block;
+            warn!(
+                start_block,
+                cursor_floor = c.first_indexed_block,
+                gap,
+                "⚠️  --live-only with a floor-side cursor gap; {gap} blocks below {} will never be filled",
+                c.first_indexed_block
+            );
         }
     }
 
@@ -636,5 +655,32 @@ impl<S: BlockSource + 'static, R: Repositories> IndexerService<S, R> {
                 topics: evt.topics.iter().map(hex::encode).collect(),
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod v14_floor_tests {
+    use super::*;
+
+    #[test]
+    fn start_at_or_above_floor_passes() {
+        assert!(check_v14_floor(0, 0).is_ok());
+        assert!(check_v14_floor(100, 100).is_ok());
+        assert!(check_v14_floor(200, 100).is_ok());
+    }
+
+    #[test]
+    fn start_below_floor_errors_with_both_numbers() {
+        let err = check_v14_floor(50, 473291).unwrap_err();
+        match err {
+            IndexerError::PreV14BlockRequested {
+                requested,
+                earliest_v14,
+            } => {
+                assert_eq!(requested, 50);
+                assert_eq!(earliest_v14, 473291);
+            }
+            other => panic!("expected PreV14BlockRequested, got {other:?}"),
+        }
     }
 }

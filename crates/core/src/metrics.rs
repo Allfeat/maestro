@@ -83,6 +83,11 @@ pub fn record_backfill_block_indexed() {
 }
 
 /// Record cumulative backfill progress (indexed and remaining block counts).
+///
+/// Fired every 1000 blocks during a range run and once at successful
+/// completion. **Not** fired on `BackfillAborted` or `ShutdownRequested` —
+/// operators should treat `backfill_progress_*` as stale after any non-clean
+/// exit until the next clean run resets them.
 pub fn record_backfill_progress(indexed: u64, remaining: u64) {
     counter!("backfill_progress_indexed").absolute(indexed);
     counter!("backfill_progress_remaining").absolute(remaining);

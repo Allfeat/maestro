@@ -1,8 +1,8 @@
 //! CLI parsing for the maestro binary.
 //!
 //! Extracted from `main.rs` to keep the entry point readable as new flags
-//! accrete. `TryFrom<Cli> for IndexerConfig` performs the pure-mechanical
-//! shape conversion with no side effects.
+//! accrete. `Cli::to_indexer_config` performs the pure-mechanical shape
+//! conversion with no side effects.
 
 use clap::Parser;
 use maestro_core::ports::BlockMode;
@@ -72,8 +72,8 @@ pub struct Cli {
     #[arg(long, env = "LIVE_ONLY", default_value = "false", value_parser = parse_bool)]
     pub live_only: bool,
 
-    /// Maximum parallel block fetches during backfill.
-    #[arg(long, env = "BACKFILL_CONCURRENCY", default_value = "16")]
+    /// Maximum parallel block fetches during backfill. Must be >= 1.
+    #[arg(long, env = "BACKFILL_CONCURRENCY", default_value = "16", value_parser = parse_concurrency)]
     pub backfill_concurrency: usize,
 
     /// Maximum retries per block fetch during backfill before aborting.
@@ -90,6 +90,16 @@ pub fn parse_block_mode(s: &str) -> Result<BlockMode, String> {
             s
         )),
     }
+}
+
+pub fn parse_concurrency(s: &str) -> Result<usize, String> {
+    let n: usize = s
+        .parse()
+        .map_err(|e: std::num::ParseIntError| e.to_string())?;
+    if n == 0 {
+        return Err("backfill concurrency must be >= 1".to_string());
+    }
+    Ok(n)
 }
 
 pub fn parse_bool(s: &str) -> Result<bool, String> {
