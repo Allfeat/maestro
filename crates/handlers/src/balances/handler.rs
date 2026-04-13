@@ -13,6 +13,7 @@ use async_trait::async_trait;
 use tracing::{debug, warn};
 
 use maestro_core::error::DomainResult;
+use maestro_core::events::EventBus;
 use maestro_core::models::Block;
 use maestro_core::ports::{HandlerOutputs, PalletHandler, RawEvent, RawExtrinsic};
 
@@ -29,11 +30,13 @@ use crate::utils::{extract_field, parse_account, parse_amount};
 /// Extracts transfer events and persists them using its own storage.
 pub struct BalancesHandler {
     storage: Arc<dyn BalancesStorage>,
+    #[allow(dead_code)] // used in Task 2 once the handler implements PalletHandlerExt
+    bus: EventBus,
 }
 
 impl BalancesHandler {
-    pub fn new(storage: Arc<dyn BalancesStorage>) -> Self {
-        Self { storage }
+    pub fn new(storage: Arc<dyn BalancesStorage>, bus: EventBus) -> Self {
+        Self { storage, bus }
     }
 
     /// Process a Transfer event into a domain model.
@@ -138,6 +141,7 @@ mod tests {
     use super::*;
     use chrono::Utc;
     use maestro_core::error::StorageResult;
+    use maestro_core::events::EventBus;
     use maestro_core::models::BlockHash;
     use maestro_core::ports::{Connection, OrderDirection, PageInfo, Pagination};
     use serde_json::json;
@@ -215,7 +219,7 @@ mod tests {
 
     #[test]
     fn test_process_transfer_valid() {
-        let handler = BalancesHandler::new(Arc::new(MockStorage));
+        let handler = BalancesHandler::new(Arc::new(MockStorage), EventBus::noop());
         let block = mock_block(100);
 
         let event = mock_event(
@@ -240,7 +244,7 @@ mod tests {
 
     #[test]
     fn test_process_transfer_alternate_field_names() {
-        let handler = BalancesHandler::new(Arc::new(MockStorage));
+        let handler = BalancesHandler::new(Arc::new(MockStorage), EventBus::noop());
         let block = mock_block(50);
 
         // Uses "who" and "dest" instead of "from" and "to"
@@ -264,7 +268,7 @@ mod tests {
 
     #[test]
     fn test_process_transfer_missing_from() {
-        let handler = BalancesHandler::new(Arc::new(MockStorage));
+        let handler = BalancesHandler::new(Arc::new(MockStorage), EventBus::noop());
         let block = mock_block(100);
 
         let event = mock_event(
@@ -281,7 +285,7 @@ mod tests {
 
     #[test]
     fn test_process_transfer_missing_to() {
-        let handler = BalancesHandler::new(Arc::new(MockStorage));
+        let handler = BalancesHandler::new(Arc::new(MockStorage), EventBus::noop());
         let block = mock_block(100);
 
         let event = mock_event(
@@ -298,7 +302,7 @@ mod tests {
 
     #[test]
     fn test_process_transfer_missing_amount() {
-        let handler = BalancesHandler::new(Arc::new(MockStorage));
+        let handler = BalancesHandler::new(Arc::new(MockStorage), EventBus::noop());
         let block = mock_block(100);
 
         let event = mock_event(
@@ -315,7 +319,7 @@ mod tests {
 
     #[test]
     fn test_process_transfer_invalid_from_length() {
-        let handler = BalancesHandler::new(Arc::new(MockStorage));
+        let handler = BalancesHandler::new(Arc::new(MockStorage), EventBus::noop());
         let block = mock_block(100);
 
         let event = mock_event(
@@ -333,13 +337,13 @@ mod tests {
 
     #[test]
     fn test_pallet_name() {
-        let handler = BalancesHandler::new(Arc::new(MockStorage));
+        let handler = BalancesHandler::new(Arc::new(MockStorage), EventBus::noop());
         assert_eq!(handler.pallet_name(), "Balances");
     }
 
     #[test]
     fn test_priority() {
-        let handler = BalancesHandler::new(Arc::new(MockStorage));
+        let handler = BalancesHandler::new(Arc::new(MockStorage), EventBus::noop());
         assert_eq!(handler.priority(), 10);
     }
 }

@@ -153,7 +153,10 @@ async fn main() -> Result<()> {
     // ─────────────────────────────────────────────────────────────────────────
     let storage_reader: Arc<dyn StorageReader> = substrate_client.clone();
     let mut bundle_registry = BundleRegistry::new();
-    bundle_registry.register(Box::new(BalancesBundle::new(db.pool().clone())));
+    bundle_registry.register(Box::new(BalancesBundle::new(
+        db.pool().clone(),
+        event_bus.clone(),
+    )));
     bundle_registry.register(Box::new(AtsBundle::new(db.pool().clone())));
     bundle_registry.register(Box::new(MiddsBundle::new(
         db.pool().clone(),

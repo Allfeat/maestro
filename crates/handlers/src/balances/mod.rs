@@ -16,17 +16,18 @@
 //! ```ignore
 //! use maestro_handlers::BalancesBundle;
 //!
-//! let bundle = BalancesBundle::new(pool);
+//! let bundle = BalancesBundle::new(pool, event_bus);
 //! registry.register(Box::new(bundle));
 //! ```
 
-mod handler;
 pub mod graphql;
+mod handler;
 pub mod models;
 pub mod storage;
 
 use std::sync::Arc;
 
+use maestro_core::events::EventBus;
 use maestro_core::ports::PalletHandler;
 use sqlx::PgPool;
 
@@ -35,7 +36,7 @@ use crate::HandlerBundle;
 pub use graphql::BalancesQuery;
 pub use handler::BalancesHandler;
 pub use models::Transfer;
-pub use storage::{BalancesStorage, PgBalancesStorage, TransferFilter, MIGRATIONS};
+pub use storage::{BalancesStorage, MIGRATIONS, PgBalancesStorage, TransferFilter};
 
 /// Handler bundle for the Balances pallet.
 ///
@@ -43,12 +44,13 @@ pub use storage::{BalancesStorage, PgBalancesStorage, TransferFilter, MIGRATIONS
 /// indexing functionality.
 pub struct BalancesBundle {
     pool: PgPool,
+    bus: EventBus,
 }
 
 impl BalancesBundle {
     /// Create a new Balances bundle.
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new(pool: PgPool, bus: EventBus) -> Self {
+        Self { pool, bus }
     }
 }
 
@@ -59,7 +61,7 @@ impl HandlerBundle for BalancesBundle {
 
     fn handlers(&self) -> Vec<Arc<dyn PalletHandler>> {
         let storage = Arc::new(PgBalancesStorage::new(self.pool.clone()));
-        vec![Arc::new(BalancesHandler::new(storage))]
+        vec![Arc::new(BalancesHandler::new(storage, self.bus.clone()))]
     }
 
     fn migrations(&self) -> &'static [&'static str] {

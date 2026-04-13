@@ -282,7 +282,7 @@ use maestro_handlers::RewardsBundle;
 
 // In main():
 let mut bundle_registry = BundleRegistry::new();
-bundle_registry.register(Box::new(BalancesBundle::new(db.pool().clone())));
+bundle_registry.register(Box::new(BalancesBundle::new(db.pool().clone(), event_bus.clone())));
 bundle_registry.register(Box::new(RewardsBundle::new(db.pool().clone())));  // Add here
 ```
 
