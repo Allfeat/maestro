@@ -7,9 +7,9 @@ use tracing::trace;
 use maestro_core::metrics::record_decode_error;
 use maestro_core::ports::RawEvent;
 use subxt::PolkadotConfig;
-use subxt::ext::scale_value::Composite;
+use subxt::dynamic::Value;
 
-use crate::scale_json::composite_to_json;
+use crate::scale_json::value_to_json;
 
 pub(crate) fn decode_events(events: &subxt::events::Events<PolkadotConfig>) -> Vec<RawEvent> {
     let mut raw_events = Vec::new();
@@ -21,8 +21,8 @@ pub(crate) fn decode_events(events: &subxt::events::Events<PolkadotConfig>) -> V
                 let name = ev.event_name().to_string();
 
                 let data = ev
-                    .decode_fields_unchecked_as::<Composite<()>>()
-                    .map(|composite| composite_to_json(&composite))
+                    .decode_fields_unchecked_as::<Value>()
+                    .map(|value| value_to_json(&value))
                     .unwrap_or_else(|e| {
                         trace!(
                             index,
@@ -79,7 +79,7 @@ pub(crate) fn build_extrinsic_results(
             }
             "ExtrinsicFailed" => {
                 let error_info = ev
-                    .decode_fields_unchecked_as::<Composite<()>>()
+                    .decode_fields_unchecked_as::<Value>()
                     .map(|v| format!("{:?}", v))
                     .unwrap_or_else(|_| "Unknown error".to_string());
                 map.insert(idx, (false, Some(error_info)));
