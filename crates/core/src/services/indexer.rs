@@ -14,7 +14,7 @@ use crate::metrics::{
     ProcessingTimer, record_block_indexed, record_blocks_deleted, record_handler_error,
     record_reorg_detected,
 };
-use crate::models::{Block, BlockHash, Event, Extrinsic, ExtrinsicStatus, IndexerCursor};
+use crate::models::{Block, BlockHash, Event, Extrinsic, ExtrinsicStatus};
 use crate::ports::{
     BlockData, BlockMode, BlockSource, HandlerOutputs, HandlerRegistry, RawBlock, Repositories,
 };
@@ -150,8 +150,8 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
             warn!("⚠️  Running in BEST BLOCK mode - data may be reorged!");
         }
 
-        // Verify we're connecting to the correct chain
         self.verify_chain_id().await?;
+        let _last_indexed = self.verify_consistency_on_startup().await?;
 
         let head = match self.config.block_mode {
             BlockMode::Finalized => self.block_source.finalized_head().await?,
@@ -159,8 +159,8 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
         };
         debug!(head = head.number, "Chain head detected");
 
-        // Subscribe based on mode
-        self.follow_blocks(&mut shutdown_rx, self.config.block_mode)
+        // Backfill wiring lands in Task 14. For now, go straight to live.
+        self.run_live_loop(&mut shutdown_rx, self.config.block_mode)
             .await
     }
 
@@ -196,7 +196,7 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
 
     /// Verify consistency between stored cursor and chain state on reconnection.
     #[instrument(skip(self))]
-    async fn verify_consistency_on_reconnect(&self) -> IndexerResult<Option<u64>> {
+    async fn verify_consistency_on_startup(&self) -> IndexerResult<Option<u64>> {
         let cursor = self
             .repositories
             .cursor()
@@ -260,7 +260,7 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
 
     /// Follow blocks via subscription (finalized or best based on mode).
     #[instrument(skip_all, fields(mode = ?mode))]
-    async fn follow_blocks(
+    async fn run_live_loop(
         &self,
         shutdown_rx: &mut tokio::sync::watch::Receiver<bool>,
         mode: BlockMode,
@@ -271,7 +271,7 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
         };
 
         debug!(mode = mode_label, "Subscribing to blocks");
-        let _last_indexed = self.verify_consistency_on_reconnect().await?;
+        // Consistency check lives in `run` now (R5); removed from here.
 
         // Exponential backoff configuration
         const INITIAL_RETRY_DELAY: Duration = Duration::from_millis(500);
@@ -304,18 +304,13 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
                         match result {
                             Ok(raw_block) => {
                                 let block_number = raw_block.number;
-                                match self.process_block(raw_block).await {
-                                    Ok(true) => {
-                                        if mode == BlockMode::Best {
-                                            info!(block = block_number, "⛓️  Block indexed (best)");
-                                        } else {
-                                            info!(block = block_number, "⛓️  Block indexed");
-                                        }
-                                    }
+                                match self.live_process_block(raw_block).await {
+                                    Ok(true) => info!(block = block_number, "⛓️  Block indexed"),
                                     Ok(false) => {
-                                        trace!(
+                                        // L2: visibility on the backfill→live handoff race.
+                                        debug!(
                                             block = block_number,
-                                            "Block skipped (already indexed)"
+                                            "live: skipped already-indexed block (handoff overlap)"
                                         );
                                     }
                                     Err(e) => {
@@ -411,29 +406,15 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
         Ok(false)
     }
 
-    /// Process a single block through all handlers.
-    /// Returns `Ok(true)` if processed, `Ok(false)` if skipped.
-    #[instrument(skip(self, raw_block), fields(block = raw_block.number))]
-    async fn process_block(&self, raw_block: RawBlock) -> IndexerResult<bool> {
-        let block_number = raw_block.number;
-        trace!("Processing block");
-
-        // Skip already indexed blocks (happens on reconnect)
-        if let Some(existing_block) = self.repositories.blocks().get_block(block_number).await? {
-            let incoming_hash = BlockHash(raw_block.hash);
-            if existing_block.hash == incoming_hash {
-                trace!("Block already indexed, skipping");
-                return Ok(false);
-            }
-            trace!("Block hash differs, checking for reorg");
-        }
-
-        // Check for reorg
-        let reorg_handled = self.check_and_handle_reorg(&raw_block).await?;
-        if reorg_handled {
-            trace!("Reorg handled, continuing with block");
-        }
-
+    /// Pure per-block processor. Runs handlers and persists atomically.
+    /// Does NOT check for reorgs, does NOT skip already-indexed blocks.
+    /// Both live and backfill loops funnel through this.
+    #[instrument(skip(self, raw_block), fields(block = raw_block.number, mode = mode.as_label()))]
+    async fn index_single_block(
+        &self,
+        raw_block: RawBlock,
+        mode: IndexMode,
+    ) -> IndexerResult<()> {
         let _timer = ProcessingTimer::new();
         let block = self.transform_block(&raw_block);
 
@@ -445,7 +426,6 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
         let extrinsics = self.transform_extrinsics(&raw_block, &block);
         let mut all_outputs = HandlerOutputs::new();
 
-        // Process events through handlers
         for raw_event in &raw_block.events {
             if let Some(handler) = self.handlers.get(&raw_event.pallet) {
                 let extrinsic = raw_event
@@ -468,7 +448,6 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
             }
         }
 
-        // Process extrinsics through handlers
         for raw_ext in &raw_block.extrinsics {
             if let Some(handler) = self.handlers.get(&raw_ext.pallet) {
                 match handler.handle_extrinsic(raw_ext, &block).await {
@@ -489,25 +468,14 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
 
         let events = self.transform_events(&raw_block, &block);
 
-        let cursor = IndexerCursor {
-            chain_id: self.config.chain_id.clone(),
-            first_indexed_block: block.number, // will be overwritten by persist_block_atomic's branched logic
-            last_indexed_block: block.number,
-            last_indexed_hash: block.hash.clone(),
-            updated_at: chrono::Utc::now(),
-        };
-
         let block_data = BlockData {
             block: &block,
             extrinsics: &extrinsics,
             events: &events,
-            cursor: &cursor,
+            chain_id: &self.config.chain_id,
         };
-
-        // Persist block data first (so foreign key constraints are satisfied)
         self.repositories.persist_block_atomic(block_data).await?;
 
-        // Handler lifecycle: on_block_end (after block is persisted)
         for handler in self.handlers.all() {
             match handler.on_block_end(&block, &all_outputs).await {
                 Ok(outputs) => all_outputs.merge(outputs),
@@ -517,9 +485,40 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
             }
         }
 
-        record_block_indexed(IndexMode::Live);
+        record_block_indexed(mode);
         trace!("Block processed successfully");
+        Ok(())
+    }
+
+    /// Live-loop wrapper. Skips already-indexed blocks, checks reorg, calls `index_single_block`.
+    /// Returns `Ok(true)` if the block was indexed, `Ok(false)` if it was skipped.
+    async fn live_process_block(&self, raw_block: RawBlock) -> IndexerResult<bool> {
+        let block_number = raw_block.number;
+        trace!(block = block_number, "live: processing block");
+
+        if let Some(existing_block) = self.repositories.blocks().get_block(block_number).await? {
+            let incoming_hash = BlockHash(raw_block.hash);
+            if existing_block.hash == incoming_hash {
+                trace!(block = block_number, "live: already indexed, skipping");
+                return Ok(false);
+            }
+            trace!(block = block_number, "live: hash differs, checking for reorg");
+        }
+
+        if self.check_and_handle_reorg(&raw_block).await? {
+            trace!(block = block_number, "live: reorg handled, continuing");
+        }
+
+        self.index_single_block(raw_block, IndexMode::Live).await?;
         Ok(true)
+    }
+
+    /// Backfill-loop wrapper. No skip, no reorg. Exists for symmetry with
+    /// `live_process_block` and to make the intent obvious at the call site.
+    #[allow(dead_code)]
+    async fn backfill_process_block(&self, raw_block: RawBlock) -> IndexerResult<()> {
+        self.index_single_block(raw_block, IndexMode::Backfill)
+            .await
     }
 
     /// Transform raw block to domain model.

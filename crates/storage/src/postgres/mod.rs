@@ -192,26 +192,25 @@ impl Repositories for PgRepositories {
             .query_err("insert event")?;
         }
 
-        // Update cursor
+        // Interim (replaced in Task 13 with the branched logic):
         sqlx::query(
             r#"
             INSERT INTO indexer_cursor (chain_id, first_indexed_block, last_indexed_block, last_indexed_hash, updated_at)
-            VALUES ($1, $2, $3, $4, $5)
+            VALUES ($1,
+                    COALESCE((SELECT first_indexed_block FROM indexer_cursor WHERE chain_id = $1), $2),
+                    $2, $3, NOW())
             ON CONFLICT (chain_id) DO UPDATE SET
-                first_indexed_block = EXCLUDED.first_indexed_block,
                 last_indexed_block = EXCLUDED.last_indexed_block,
-                last_indexed_hash = EXCLUDED.last_indexed_hash,
-                updated_at = EXCLUDED.updated_at
+                last_indexed_hash  = EXCLUDED.last_indexed_hash,
+                updated_at         = EXCLUDED.updated_at
             "#,
         )
-        .bind(&data.cursor.chain_id)
-        .bind(data.cursor.first_indexed_block as i64)
-        .bind(data.cursor.last_indexed_block as i64)
-        .bind(&data.cursor.last_indexed_hash.0[..])
-        .bind(data.cursor.updated_at)
+        .bind(data.chain_id)
+        .bind(data.block.number as i64)
+        .bind(&data.block.hash.0[..])
         .execute(&mut *tx)
         .await
-        .query_err("update cursor")?;
+        .query_err("update cursor (interim)")?;
 
         tx.commit().await.tx_err("commit persist_block_atomic")?;
 

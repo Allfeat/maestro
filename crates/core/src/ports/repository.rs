@@ -165,7 +165,7 @@ pub struct BlockData<'a> {
     pub block: &'a Block,
     pub extrinsics: &'a [Extrinsic],
     pub events: &'a [Event],
-    pub cursor: &'a IndexerCursor,
+    pub chain_id: &'a str,
 }
 
 /// Combined repository access for the indexer.
