@@ -5,7 +5,37 @@
 //! 0–2 `BackfillRange`s. The downward-then-upward ordering preserves the
 //! single-contiguous-range cursor invariant across crashes.
 
+use crate::error::ChainError;
+use crate::metrics::record_backfill_fetch_retry;
 use crate::models::IndexerCursor;
+use crate::ports::{BlockSource, RawBlock};
+use std::time::Duration;
+use tracing::warn;
+
+/// Retry wrapper around `BlockSource::fetch_block_at` with bounded exponential
+/// backoff (250ms → 10s). Returns `Err((block_number, ChainError))` on budget
+/// exhaustion so the caller can report the offending block.
+pub async fn fetch_with_retry<S: BlockSource + ?Sized>(
+    source: &S,
+    block: u64,
+    max_retries: u32,
+) -> Result<RawBlock, (u64, ChainError)> {
+    let mut delay = Duration::from_millis(250);
+    let mut attempt: u32 = 0;
+    loop {
+        match source.fetch_block_at(block).await {
+            Ok(raw) => return Ok(raw),
+            Err(e) if attempt < max_retries => {
+                warn!(block, attempt, error = %e, "backfill fetch failed, retrying");
+                record_backfill_fetch_retry();
+                tokio::time::sleep(delay).await;
+                delay = (delay * 2).min(Duration::from_secs(10));
+                attempt += 1;
+            }
+            Err(e) => return Err((block, e)),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackfillDirection {
@@ -78,6 +108,84 @@ impl BackfillPlan {
         }
 
         BackfillPlan { ranges }
+    }
+}
+
+#[cfg(test)]
+mod retry_tests {
+    use super::*;
+    use crate::error::{ChainError, ChainResult};
+    use crate::ports::{BlockSource, FinalizedBlockStream, FinalizedHead, RawBlock};
+    use async_trait::async_trait;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    /// A tiny mock that fails `fail_count` times then succeeds.
+    struct FlakySource {
+        fail_count: AtomicU32,
+    }
+
+    fn stub_block(number: u64) -> RawBlock {
+        RawBlock {
+            number,
+            hash: [0u8; 32],
+            parent_hash: [0u8; 32],
+            state_root: [0u8; 32],
+            extrinsics_root: [0u8; 32],
+            extrinsics: vec![],
+            events: vec![],
+            timestamp: None,
+        }
+    }
+
+    #[async_trait]
+    impl BlockSource for FlakySource {
+        async fn genesis_hash(&self) -> ChainResult<crate::models::BlockHash> {
+            Ok(crate::models::BlockHash([0u8; 32]))
+        }
+        async fn finalized_head(&self) -> ChainResult<FinalizedHead> {
+            Ok(FinalizedHead { number: 0, hash: [0u8; 32] })
+        }
+        async fn best_head(&self) -> ChainResult<FinalizedHead> {
+            Ok(FinalizedHead { number: 0, hash: [0u8; 32] })
+        }
+        async fn subscribe_finalized(&self) -> ChainResult<FinalizedBlockStream> {
+            unimplemented!()
+        }
+        async fn subscribe_best(&self) -> ChainResult<FinalizedBlockStream> {
+            unimplemented!()
+        }
+        async fn runtime_version(&self) -> ChainResult<u32> {
+            Ok(1)
+        }
+        async fn fetch_block_at(&self, number: u64) -> ChainResult<RawBlock> {
+            let remaining = self.fail_count.load(Ordering::SeqCst);
+            if remaining > 0 {
+                self.fail_count.fetch_sub(1, Ordering::SeqCst);
+                return Err(ChainError::RpcError(format!("flaky at {number}")));
+            }
+            Ok(stub_block(number))
+        }
+        async fn earliest_v14_block(&self) -> ChainResult<u64> {
+            Ok(0)
+        }
+    }
+
+    #[tokio::test]
+    async fn succeeds_after_retries() {
+        let src = FlakySource { fail_count: AtomicU32::new(2) };
+        let result = fetch_with_retry(&src, 42, 5).await;
+        assert!(result.is_ok(), "should succeed on 3rd attempt");
+        assert_eq!(result.unwrap().number, 42);
+    }
+
+    #[tokio::test]
+    async fn errors_when_retry_budget_exhausted() {
+        let src = FlakySource { fail_count: AtomicU32::new(10) };
+        let result = fetch_with_retry(&src, 42, 3).await;
+        match result {
+            Err((block, _)) => assert_eq!(block, 42),
+            Ok(_) => panic!("expected retry exhaustion"),
+        }
     }
 }
 
