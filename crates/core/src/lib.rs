@@ -56,6 +56,7 @@
 //! 5. Update cursor for progress tracking
 
 pub mod error;
+pub mod events;
 pub mod metrics;
 pub mod models;
 pub mod ports;
