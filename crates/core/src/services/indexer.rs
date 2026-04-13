@@ -467,11 +467,7 @@ impl<S: BlockSource + 'static, R: Repositories> IndexerService<S, R> {
     /// Does NOT check for reorgs, does NOT skip already-indexed blocks.
     /// Both live and backfill loops funnel through this.
     #[instrument(skip(self, raw_block), fields(block = raw_block.number, mode = mode.as_label()))]
-    async fn index_single_block(
-        &self,
-        raw_block: RawBlock,
-        mode: IndexMode,
-    ) -> IndexerResult<()> {
+    async fn index_single_block(&self, raw_block: RawBlock, mode: IndexMode) -> IndexerResult<()> {
         let _timer = ProcessingTimer::new();
         let block = self.transform_block(&raw_block);
 
@@ -559,7 +555,10 @@ impl<S: BlockSource + 'static, R: Repositories> IndexerService<S, R> {
                 trace!(block = block_number, "live: already indexed, skipping");
                 return Ok(false);
             }
-            trace!(block = block_number, "live: hash differs, checking for reorg");
+            trace!(
+                block = block_number,
+                "live: hash differs, checking for reorg"
+            );
         }
 
         if self.check_and_handle_reorg(&raw_block).await? {

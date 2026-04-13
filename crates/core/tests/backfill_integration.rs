@@ -70,11 +70,17 @@ impl BlockSource for MockBlockSource {
     }
 
     async fn finalized_head(&self) -> ChainResult<FinalizedHead> {
-        Ok(FinalizedHead { number: self.tip, hash: [0u8; 32] })
+        Ok(FinalizedHead {
+            number: self.tip,
+            hash: [0u8; 32],
+        })
     }
 
     async fn best_head(&self) -> ChainResult<FinalizedHead> {
-        Ok(FinalizedHead { number: self.tip, hash: [0u8; 32] })
+        Ok(FinalizedHead {
+            number: self.tip,
+            hash: [0u8; 32],
+        })
     }
 
     async fn subscribe_finalized(&self) -> ChainResult<FinalizedBlockStream> {
@@ -124,7 +130,9 @@ struct MockRepositories {
 
 impl MockRepositories {
     fn new() -> Self {
-        Self { inner: Mutex::new(MockStore::default()) }
+        Self {
+            inner: Mutex::new(MockStore::default()),
+        }
     }
 
     fn cursor_snapshot(&self) -> Option<IndexerCursor> {
@@ -341,7 +349,11 @@ impl Repositories for MockRepositories {
 // ============================================================================
 
 fn range(from: u64, to: u64, dir: BackfillDirection) -> BackfillRange {
-    BackfillRange { from, to, direction: dir }
+    BackfillRange {
+        from,
+        to,
+        direction: dir,
+    }
 }
 
 fn mock_cfg(concurrency: usize, max_retries: u32) -> BackfillConfig {

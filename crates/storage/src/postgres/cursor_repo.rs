@@ -7,9 +7,9 @@ use maestro_core::error::StorageResult;
 use maestro_core::models::{BlockHash, IndexerCursor};
 use maestro_core::ports::CursorRepository;
 
+use super::SqlxResultExt;
 use super::database::Database;
 use super::helpers::bytes_to_hash32;
-use super::SqlxResultExt;
 
 /// PostgreSQL implementation of CursorRepository.
 pub struct PgCursorRepository {

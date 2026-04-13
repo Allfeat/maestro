@@ -2,9 +2,9 @@
 
 use async_trait::async_trait;
 use futures::StreamExt;
-use subxt::rpcs::client::reconnecting_rpc_client::RpcClient as ReconnectingRpcClient;
-use subxt::rpcs::RpcClient;
 use subxt::client::{Block, OnlineClientAtBlock};
+use subxt::rpcs::RpcClient;
+use subxt::rpcs::client::reconnecting_rpc_client::RpcClient as ReconnectingRpcClient;
 use subxt::{OnlineClient, PolkadotConfig};
 use tracing::{debug, instrument};
 
@@ -145,14 +145,14 @@ impl BlockSource for SubstrateClient {
     }
 
     async fn fetch_block_at(&self, number: u64) -> ChainResult<RawBlock> {
-        let at_block = self
-            .client
-            .at_block(number)
-            .await
-            .map_err(|e| ChainError::BlockFetchError {
-                hash: format!("at_block({number})"),
-                message: e.to_string(),
-            })?;
+        let at_block =
+            self.client
+                .at_block(number)
+                .await
+                .map_err(|e| ChainError::BlockFetchError {
+                    hash: format!("at_block({number})"),
+                    message: e.to_string(),
+                })?;
         decode_raw_block_at(&at_block).await
     }
 

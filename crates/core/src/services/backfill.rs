@@ -60,11 +60,7 @@ pub struct BackfillPlan {
 }
 
 impl BackfillPlan {
-    pub fn compute(
-        start_block: u64,
-        existing_cursor: Option<&IndexerCursor>,
-        tip: u64,
-    ) -> Self {
+    pub fn compute(start_block: u64, existing_cursor: Option<&IndexerCursor>, tip: u64) -> Self {
         let mut ranges = Vec::new();
 
         match existing_cursor {
@@ -143,10 +139,16 @@ mod retry_tests {
             Ok(crate::models::BlockHash([0u8; 32]))
         }
         async fn finalized_head(&self) -> ChainResult<FinalizedHead> {
-            Ok(FinalizedHead { number: 0, hash: [0u8; 32] })
+            Ok(FinalizedHead {
+                number: 0,
+                hash: [0u8; 32],
+            })
         }
         async fn best_head(&self) -> ChainResult<FinalizedHead> {
-            Ok(FinalizedHead { number: 0, hash: [0u8; 32] })
+            Ok(FinalizedHead {
+                number: 0,
+                hash: [0u8; 32],
+            })
         }
         async fn subscribe_finalized(&self) -> ChainResult<FinalizedBlockStream> {
             unimplemented!()
@@ -172,7 +174,9 @@ mod retry_tests {
 
     #[tokio::test]
     async fn succeeds_after_retries() {
-        let src = FlakySource { fail_count: AtomicU32::new(2) };
+        let src = FlakySource {
+            fail_count: AtomicU32::new(2),
+        };
         let result = fetch_with_retry(&src, 42, 5).await;
         assert!(result.is_ok(), "should succeed on 3rd attempt");
         assert_eq!(result.unwrap().number, 42);
@@ -180,7 +184,9 @@ mod retry_tests {
 
     #[tokio::test]
     async fn errors_when_retry_budget_exhausted() {
-        let src = FlakySource { fail_count: AtomicU32::new(10) };
+        let src = FlakySource {
+            fail_count: AtomicU32::new(10),
+        };
         let result = fetch_with_retry(&src, 42, 3).await;
         match result {
             Err((block, _)) => assert_eq!(block, 42),
@@ -278,7 +284,11 @@ pub struct BackfillRunner<S: BlockSource> {
 
 impl<S: BlockSource + 'static> BackfillRunner<S> {
     pub fn new(block_source: Arc<S>, config: BackfillConfig, chain_id: String) -> Self {
-        Self { block_source, config, chain_id }
+        Self {
+            block_source,
+            config,
+            chain_id,
+        }
     }
 }
 

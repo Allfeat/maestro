@@ -19,7 +19,11 @@ pub struct Cli {
     pub ws_url: String,
 
     /// PostgreSQL database URL.
-    #[arg(long, env = "DATABASE_URL", default_value = "postgres://localhost/maestro")]
+    #[arg(
+        long,
+        env = "DATABASE_URL",
+        default_value = "postgres://localhost/maestro"
+    )]
     pub database_url: String,
 
     /// GraphQL server port.
@@ -81,7 +85,10 @@ pub fn parse_block_mode(s: &str) -> Result<BlockMode, String> {
     match s.to_lowercase().as_str() {
         "finalized" => Ok(BlockMode::Finalized),
         "best" => Ok(BlockMode::Best),
-        _ => Err(format!("Invalid block mode '{}'. Use 'finalized' or 'best'.", s)),
+        _ => Err(format!(
+            "Invalid block mode '{}'. Use 'finalized' or 'best'.",
+            s
+        )),
     }
 }
 
