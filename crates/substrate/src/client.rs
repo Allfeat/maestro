@@ -12,7 +12,7 @@ use maestro_core::error::{ChainError, ChainResult};
 use maestro_core::models::BlockHash;
 use maestro_core::ports::{BlockSource, FinalizedBlockStream, FinalizedHead, RawBlock};
 
-use crate::decode::decode_raw_block;
+use crate::decode::{decode_raw_block, decode_raw_block_at};
 
 /// Configuration for the Substrate client.
 #[derive(Debug, Clone)]
@@ -53,6 +53,8 @@ impl SubstrateClient {
             .await
             .map_err(|e| ChainError::ConnectionFailed(e.to_string()))?;
         let rpc_client = RpcClient::new(inner);
+        // `PolkadotConfig::default()` enables `use_historic_types: true` by default,
+        // so historic (pre-V14) metadata decoding works without an explicit builder.
         let client = OnlineClient::<PolkadotConfig>::from_rpc_client(rpc_client)
             .await
             .map_err(|e| ChainError::ConnectionFailed(e.to_string()))?;
@@ -143,14 +145,35 @@ impl BlockSource for SubstrateClient {
     }
 
     async fn fetch_block_at(&self, number: u64) -> ChainResult<RawBlock> {
-        Err(ChainError::RpcError(format!(
-            "fetch_block_at({number}) stub - implemented in Task 12"
-        )))
+        let at_block = self
+            .client
+            .at_block(number)
+            .await
+            .map_err(|e| ChainError::BlockFetchError {
+                hash: format!("at_block({number})"),
+                message: e.to_string(),
+            })?;
+        decode_raw_block_at(&at_block).await
     }
 
+    /// Floor block for V14 metadata on the connected chain.
+    ///
+    /// Allfeat is V14-from-genesis: every block from 0 onward decodes under V14+
+    /// metadata, so the floor is `0` and any `start_block` is allowed. Non-V14-
+    /// from-genesis chains are out of scope for this indexer.
+    ///
+    /// A binary search over historic `metadata_at(hash)` would be needed to
+    /// support pre-V14 genesis chains, but subxt 0.50 does not expose
+    /// `metadata_at` on the public backend surface we depend on here, and
+    /// Allfeat does not need it.
+    ///
+    /// Task 14 compares `start_block` against this value and raises
+    /// `IndexerError::PreV14BlockRequested` when below it; returning `0` makes
+    /// that branch unreachable on Allfeat, which is the intended behavior.
+    /// Should a future deployment run against a pre-V14 chain, historic types
+    /// are already enabled via `PolkadotConfig::default()`, so decoding would
+    /// still succeed rather than panic.
     async fn earliest_v14_block(&self) -> ChainResult<u64> {
-        Err(ChainError::RpcError(
-            "earliest_v14_block stub - implemented in Task 12".into(),
-        ))
+        Ok(0)
     }
 }
