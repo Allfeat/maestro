@@ -259,3 +259,94 @@ mod plan_tests {
         assert_eq!(plan.ranges[0].to, 99);
     }
 }
+
+use crate::error::{IndexerError, IndexerResult};
+use crate::services::BackfillConfig;
+use futures::stream::StreamExt;
+use std::sync::Arc;
+use tokio::sync::watch;
+use tracing::info;
+
+/// Drives a `BackfillRange` by streaming per-block fetches through `buffered(K)`
+/// and handing each decoded `RawBlock` to a caller-provided processor closure.
+/// The closure shape avoids a circular ownership problem with `IndexerService`.
+pub struct BackfillRunner<S: BlockSource> {
+    block_source: Arc<S>,
+    config: BackfillConfig,
+    chain_id: String,
+}
+
+impl<S: BlockSource + 'static> BackfillRunner<S> {
+    pub fn new(block_source: Arc<S>, config: BackfillConfig, chain_id: String) -> Self {
+        Self { block_source, config, chain_id }
+    }
+}
+
+impl<S: BlockSource + 'static> BackfillRunner<S> {
+    pub async fn run_range<F, Fut>(
+        &self,
+        range: BackfillRange,
+        shutdown_rx: &mut watch::Receiver<bool>,
+        mut index_single_block: F,
+    ) -> IndexerResult<()>
+    where
+        F: FnMut(RawBlock) -> Fut,
+        Fut: std::future::Future<Output = IndexerResult<()>>,
+    {
+        let total = range.to - range.from + 1;
+        info!(
+            chain_id = %self.chain_id,
+            from = range.from,
+            to = range.to,
+            direction = ?range.direction,
+            total,
+            "backfill range starting"
+        );
+
+        // Build block-number iterator (boxed so both branches have the same type).
+        let block_numbers: Box<dyn Iterator<Item = u64> + Send> = match range.direction {
+            BackfillDirection::Upward => Box::new(range.from..=range.to),
+            BackfillDirection::Downward => Box::new((range.from..=range.to).rev()),
+        };
+
+        let source = self.block_source.clone();
+        let max_retries = self.config.max_fetch_retries;
+        let concurrency = self.config.concurrency.max(1);
+
+        let mut fetched = futures::stream::iter(block_numbers)
+            .map(move |n| {
+                let source = source.clone();
+                async move { fetch_with_retry(&*source, n, max_retries).await }
+            })
+            .buffered(concurrency);
+
+        let mut indexed: u64 = 0;
+        while let Some(result) = fetched.next().await {
+            if *shutdown_rx.borrow() {
+                info!(indexed, total, "backfill interrupted by shutdown");
+                return Err(IndexerError::ShutdownRequested);
+            }
+
+            let raw_block = result.map_err(|(block, err)| {
+                crate::metrics::record_backfill_aborted();
+                IndexerError::BackfillAborted {
+                    block,
+                    reason: err.to_string(),
+                }
+            })?;
+
+            index_single_block(raw_block).await?;
+
+            indexed += 1;
+            crate::metrics::record_backfill_block_indexed();
+            if indexed.is_multiple_of(1000) {
+                info!(indexed, remaining = total - indexed, "backfill progress");
+                crate::metrics::record_backfill_progress(indexed, total - indexed);
+            }
+        }
+
+        info!(indexed, total, "backfill range complete");
+        crate::metrics::record_backfill_progress(indexed, total.saturating_sub(indexed));
+        Ok(())
+    }
+}
