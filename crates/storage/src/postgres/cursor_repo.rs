@@ -80,6 +80,47 @@ impl CursorRepository for PgCursorRepository {
 
         Ok(())
     }
+
+    async fn extend_upward(
+        &self,
+        chain_id: &str,
+        block: u64,
+        hash: &BlockHash,
+    ) -> StorageResult<()> {
+        sqlx::query(
+            r#"
+            UPDATE indexer_cursor
+            SET last_indexed_block = $1,
+                last_indexed_hash = $2,
+                updated_at = NOW()
+            WHERE chain_id = $3
+            "#,
+        )
+        .bind(block as i64)
+        .bind(&hash.0[..])
+        .bind(chain_id)
+        .execute(&self.pool)
+        .await
+        .query_err("extend_upward cursor")?;
+        Ok(())
+    }
+
+    async fn extend_downward(&self, chain_id: &str, block: u64) -> StorageResult<()> {
+        sqlx::query(
+            r#"
+            UPDATE indexer_cursor
+            SET first_indexed_block = $1,
+                updated_at = NOW()
+            WHERE chain_id = $2
+            "#,
+        )
+        .bind(block as i64)
+        .bind(chain_id)
+        .execute(&self.pool)
+        .await
+        .query_err("extend_downward cursor")?;
+        Ok(())
+    }
 }
 
 #[derive(sqlx::FromRow)]

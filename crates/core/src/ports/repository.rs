@@ -139,6 +139,20 @@ pub trait CursorRepository: Send + Sync {
 
     /// Update cursor (upsert).
     async fn set_cursor(&self, cursor: &IndexerCursor) -> StorageResult<()>;
+
+    /// Extend the indexed range upward by one block.
+    /// Updates `last_indexed_block`, `last_indexed_hash`, `updated_at`.
+    async fn extend_upward(
+        &self,
+        chain_id: &str,
+        block: u64,
+        hash: &BlockHash,
+    ) -> StorageResult<()>;
+
+    /// Extend the indexed range downward by one block.
+    /// Updates `first_indexed_block`, `updated_at`. Does NOT touch
+    /// `last_indexed_hash` (that is tied to the tip of the range).
+    async fn extend_downward(&self, chain_id: &str, block: u64) -> StorageResult<()>;
 }
 
 // =============================================================================
