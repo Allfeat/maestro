@@ -43,6 +43,7 @@ async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
     let cli = Cli::parse();
     init_tracing(&cli.log_level, cli.json_logs);
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
     // ─────────────────────────────────────────────────────────────────────────
     // 📄 SCHEMA EXPORT (early exit, no DB needed)
@@ -89,6 +90,17 @@ async fn main() -> Result<()> {
                 false
             }
         };
+
+    // Event bus — in-process, shared by future event producers and consumers.
+    // Phase 0 wires the bus and two passive consumers (logger, metrics_bridge).
+    // No service emits events yet — that starts in Phase 1.
+    let event_bus = maestro_core::events::EventBus::new(maestro_core::events::DEFAULT_BUS_CAPACITY);
+    let logger_handle =
+        maestro_core::events::logger::spawn(event_bus.clone(), shutdown_tx.subscribe());
+    let metrics_bridge_handle =
+        maestro_core::events::metrics_bridge::spawn(event_bus.clone(), shutdown_tx.subscribe());
+    // Will be plumbed into IndexerService and handler bundles in Phase 1+.
+    let _ = &event_bus;
 
     // ─────────────────────────────────────────────────────────────────────────
     // 🚀 STARTUP
@@ -188,7 +200,6 @@ async fn main() -> Result<()> {
     // ─────────────────────────────────────────────────────────────────────────
     // ⚡ SERVICES START
     // ─────────────────────────────────────────────────────────────────────────
-    let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let mut graphql_shutdown_rx = shutdown_tx.subscribe();
 
     let graphql_config = ServerConfig {
@@ -286,6 +297,16 @@ async fn main() -> Result<()> {
     match tokio::time::timeout(std::time::Duration::from_secs(10), graphql_handle).await {
         Ok(_) => debug!("GraphQL stopped"),
         Err(_) => warn!("⚠️  GraphQL shutdown timed out"),
+    }
+
+    match tokio::time::timeout(std::time::Duration::from_secs(5), logger_handle).await {
+        Ok(_) => debug!("Event logger stopped"),
+        Err(_) => warn!("⚠️  Event logger shutdown timed out"),
+    }
+
+    match tokio::time::timeout(std::time::Duration::from_secs(5), metrics_bridge_handle).await {
+        Ok(_) => debug!("Metrics bridge stopped"),
+        Err(_) => warn!("⚠️  Metrics bridge shutdown timed out"),
     }
 
     db.close().await;
