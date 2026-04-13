@@ -10,7 +10,7 @@ use tracing::{debug, instrument};
 
 use maestro_core::error::{ChainError, ChainResult};
 use maestro_core::models::BlockHash;
-use maestro_core::ports::{BlockSource, FinalizedBlockStream, FinalizedHead};
+use maestro_core::ports::{BlockSource, FinalizedBlockStream, FinalizedHead, RawBlock};
 
 use crate::decode::decode_raw_block;
 
@@ -140,5 +140,17 @@ impl BlockSource for SubstrateClient {
             .await
             .map_err(|e| ChainError::RpcError(e.to_string()))?;
         Ok(at_block.spec_version())
+    }
+
+    async fn fetch_block_at(&self, number: u64) -> ChainResult<RawBlock> {
+        Err(ChainError::RpcError(format!(
+            "fetch_block_at({number}) stub - implemented in Task 12"
+        )))
+    }
+
+    async fn earliest_v14_block(&self) -> ChainResult<u64> {
+        Err(ChainError::RpcError(
+            "earliest_v14_block stub - implemented in Task 12".into(),
+        ))
     }
 }

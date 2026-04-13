@@ -130,6 +130,15 @@ pub trait BlockSource: Send + Sync {
 
     /// Get current runtime version.
     async fn runtime_version(&self) -> ChainResult<u32>;
+
+    /// Fetch a block by number. Used by the backfill loop.
+    /// Errors map to `ChainError::RpcError` on transient failures.
+    async fn fetch_block_at(&self, number: u64) -> ChainResult<RawBlock>;
+
+    /// Earliest block whose runtime metadata is V14 or later.
+    /// Backfill below this block is refused at startup.
+    /// Returns 0 if the chain is V14-from-genesis.
+    async fn earliest_v14_block(&self) -> ChainResult<u64>;
 }
 
 // =============================================================================
