@@ -1,5 +1,12 @@
 //! SCALE Value → JSON conversion preserving the handler JSON contract.
 //!
+//! This module is generic over the scale-value context type `T`. Call sites in
+//! `decode/events.rs` and `decode/extrinsics.rs` instantiate it with
+//! `T = u32` via `subxt::dynamic::Value` (the canonical dynamic decode target
+//! used by the subxt 0.50 examples). The unit tests below exercise the same
+//! code paths with `T = ()` — the converter does not read `T`, so both
+//! instantiations share a single test surface.
+//!
 //! Invariants (violations silently break handlers in `crates/handlers`):
 //!   (1) Named composites keep FRAME field names verbatim as JSON object keys.
 //!       (`extract_field` in handlers/src/utils.rs searches by name, e.g. "from"/"who".)
