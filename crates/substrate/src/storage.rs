@@ -49,13 +49,10 @@ impl StorageReader for SubstrateClient {
     ) -> ChainResult<Option<Vec<u8>>> {
         let hash = subxt::utils::H256::from_slice(&block_hash.0);
 
-        // Use subxt's dynamic storage API to construct the storage address.
-        // The runtime metadata determines the hasher, making this more robust
-        // than manual key construction.
-        let storage_query = subxt::dynamic::storage::<
-            Vec<subxt::dynamic::Value>,
-            subxt::dynamic::Value,
-        >(pallet, item);
+        // High-level dynamic storage (see subxt/examples/dynamic.rs): the
+        // runtime metadata drives the hasher, and the typed-tuple key tells
+        // subxt how to scale-encode the lookup value.
+        let addr = subxt::dynamic::storage::<(Vec<u8>,), subxt::dynamic::Value>(pallet, item);
 
         let at_block = self
             .client
@@ -63,21 +60,13 @@ impl StorageReader for SubstrateClient {
             .await
             .map_err(|e| ChainError::RpcError(format!("Failed to resolve block: {}", e)))?;
 
-        let entry = at_block.storage().entry(storage_query).map_err(|e| {
-            ChainError::RpcError(format!("Failed to construct storage entry: {}", e))
-        })?;
-
-        match entry
-            .try_fetch(vec![subxt::dynamic::Value::from_bytes(map_key)])
+        let value = at_block
+            .storage()
+            .try_fetch(addr, (map_key.to_vec(),))
             .await
-        {
-            Ok(Some(value)) => Ok(Some(value.bytes().to_vec())),
-            Ok(None) => Ok(None),
-            Err(e) => Err(ChainError::RpcError(format!(
-                "Failed to fetch storage: {}",
-                e
-            ))),
-        }
+            .map_err(|e| ChainError::RpcError(format!("Failed to fetch storage: {}", e)))?;
+
+        Ok(value.map(|v| v.bytes().to_vec()))
     }
 
     async fn read_storage_map_u64(
@@ -89,12 +78,11 @@ impl StorageReader for SubstrateClient {
     ) -> ChainResult<Option<Vec<u8>>> {
         let hash = subxt::utils::H256::from_slice(&block_hash.0);
 
-        // Dynamic storage: the runtime metadata determines the hasher and
-        // correctly encodes the u128 key.
-        let storage_query = subxt::dynamic::storage::<
-            Vec<subxt::dynamic::Value>,
-            subxt::dynamic::Value,
-        >(pallet, item);
+        // High-level dynamic storage. The stored key is `u128` because
+        // runtime-side indices are typed that way (matches the pre-refactor
+        // `Value::u128(key as u128)` encoding; guarded by the unit test in
+        // this module).
+        let addr = subxt::dynamic::storage::<(u128,), subxt::dynamic::Value>(pallet, item);
 
         let at_block = self
             .client
@@ -102,21 +90,13 @@ impl StorageReader for SubstrateClient {
             .await
             .map_err(|e| ChainError::RpcError(format!("Failed to resolve block: {}", e)))?;
 
-        let entry = at_block.storage().entry(storage_query).map_err(|e| {
-            ChainError::RpcError(format!("Failed to construct storage entry: {}", e))
-        })?;
-
-        match entry
-            .try_fetch(vec![subxt::dynamic::Value::u128(key as u128)])
+        let value = at_block
+            .storage()
+            .try_fetch(addr, (key as u128,))
             .await
-        {
-            Ok(Some(value)) => Ok(Some(value.bytes().to_vec())),
-            Ok(None) => Ok(None),
-            Err(e) => Err(ChainError::RpcError(format!(
-                "Failed to fetch storage: {}",
-                e
-            ))),
-        }
+            .map_err(|e| ChainError::RpcError(format!("Failed to fetch storage: {}", e)))?;
+
+        Ok(value.map(|v| v.bytes().to_vec()))
     }
 }
 
