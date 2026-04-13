@@ -36,6 +36,8 @@ pub struct IndexerConfig {
     pub retry_delay: Duration,
     /// Block subscription mode (finalized or best).
     pub block_mode: BlockMode,
+    /// Historical backfill configuration.
+    pub backfill: BackfillConfig,
 }
 
 impl Default for IndexerConfig {
@@ -46,6 +48,31 @@ impl Default for IndexerConfig {
             max_retries: 3,
             retry_delay: Duration::from_secs(1),
             block_mode: BlockMode::Finalized,
+            backfill: BackfillConfig::default(),
+        }
+    }
+}
+
+/// Historical backfill configuration.
+#[derive(Debug, Clone)]
+pub struct BackfillConfig {
+    /// Lowest block number to index (inclusive).
+    pub start_block: u64,
+    /// Skip backfill entirely and start indexing at the current tip.
+    pub live_only: bool,
+    /// Maximum parallel block fetches during backfill.
+    pub concurrency: usize,
+    /// Maximum per-block fetch retries before aborting the run.
+    pub max_fetch_retries: u32,
+}
+
+impl Default for BackfillConfig {
+    fn default() -> Self {
+        Self {
+            start_block: 0,
+            live_only: false,
+            concurrency: 16,
+            max_fetch_retries: 5,
         }
     }
 }
