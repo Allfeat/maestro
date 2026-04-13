@@ -99,8 +99,6 @@ async fn main() -> Result<()> {
         maestro_core::events::logger::spawn(event_bus.clone(), shutdown_tx.subscribe());
     let metrics_bridge_handle =
         maestro_core::events::metrics_bridge::spawn(event_bus.clone(), shutdown_tx.subscribe());
-    // Will be plumbed into IndexerService and handler bundles in Phase 1+.
-    let _ = &event_bus;
 
     // ─────────────────────────────────────────────────────────────────────────
     // 🚀 STARTUP
@@ -153,7 +151,10 @@ async fn main() -> Result<()> {
     // ─────────────────────────────────────────────────────────────────────────
     let storage_reader: Arc<dyn StorageReader> = substrate_client.clone();
     let mut bundle_registry = BundleRegistry::new();
-    bundle_registry.register(Box::new(BalancesBundle::new(db.pool().clone())));
+    bundle_registry.register(Box::new(BalancesBundle::new(
+        db.pool().clone(),
+        event_bus.clone(),
+    )));
     bundle_registry.register(Box::new(AtsBundle::new(db.pool().clone())));
     bundle_registry.register(Box::new(MiddsBundle::new(
         db.pool().clone(),

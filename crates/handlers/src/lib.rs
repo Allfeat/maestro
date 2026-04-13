@@ -35,7 +35,7 @@
 //!
 //! ```ignore
 //! let mut registry = BundleRegistry::new();
-//! registry.register(Box::new(BalancesBundle::new(repositories.clone())));
+//! registry.register(Box::new(BalancesBundle::new(repositories.clone(), event_bus.clone())));
 //! registry.register(Box::new(MyPalletBundle::new(/* ... */)));
 //!
 //! // Run all bundle migrations

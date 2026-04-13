@@ -23,7 +23,7 @@ use crate::bundle::HandlerBundle;
 /// let mut registry = BundleRegistry::new();
 ///
 /// // Register bundles (order doesn't matter - priority determines execution order)
-/// registry.register(Box::new(BalancesBundle::new(pool.clone())));
+/// registry.register(Box::new(BalancesBundle::new(pool.clone(), event_bus.clone())));
 /// registry.register(Box::new(StakingBundle::new(pool.clone())));
 ///
 /// // Run migrations for all bundles (tracked, idempotent)
@@ -231,9 +231,18 @@ mod tests {
 
     #[async_trait]
     impl PalletHandler for MockHandler {
-        fn pallet_name(&self) -> &'static str { self.0 }
-        fn priority(&self) -> i32 { self.1 }
-        async fn handle_event(&self, _: &RawEvent, _: &Block, _: Option<&RawExtrinsic>) -> DomainResult<HandlerOutputs> {
+        fn pallet_name(&self) -> &'static str {
+            self.0
+        }
+        fn priority(&self) -> i32 {
+            self.1
+        }
+        async fn handle_event(
+            &self,
+            _: &RawEvent,
+            _: &Block,
+            _: Option<&RawExtrinsic>,
+        ) -> DomainResult<HandlerOutputs> {
             Ok(HandlerOutputs::new())
         }
     }
@@ -245,10 +254,18 @@ mod tests {
     }
 
     impl HandlerBundle for MockBundle {
-        fn name(&self) -> &'static str { self.name }
-        fn handlers(&self) -> Vec<Arc<dyn PalletHandler>> { self.handlers.clone() }
-        fn migrations(&self) -> &'static [&'static str] { &[] }
-        fn priority(&self) -> i32 { self.priority }
+        fn name(&self) -> &'static str {
+            self.name
+        }
+        fn handlers(&self) -> Vec<Arc<dyn PalletHandler>> {
+            self.handlers.clone()
+        }
+        fn migrations(&self) -> &'static [&'static str] {
+            &[]
+        }
+        fn priority(&self) -> i32 {
+            self.priority
+        }
     }
 
     // Test critique: les handlers sont extraits dans l'ordre de priorité des bundles
