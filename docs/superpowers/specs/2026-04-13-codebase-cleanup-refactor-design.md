@@ -245,6 +245,15 @@ Macros stay in reserve if Phase 2 reveals boilerplate a trait cannot absorb.
 
 The trait assumes each concrete handler produces exactly one model type. If a pallet needs to produce multiple model types from one event, the plan is to split it into N concrete structs, each implementing `PalletHandlerExt` with its own `Model`. Decision deferred until the need is real (YAGNI).
 
+### Phase 0 deviation: crate location
+
+`PalletHandlerExt` and its blanket `impl<H> PalletHandler for H` were
+placed in `maestro_core::ports::pallet_handler_ext`, not in
+`maestro_handlers::core::pallet_handler_ext` as originally diagrammed.
+The orphan rule forbids a downstream crate from providing a blanket
+foreign-trait impl over a bare type parameter. Downstream handlers
+import via `maestro_core::ports::PalletHandlerExt`.
+
 ## Phases
 
 ### Phase 0 — Foundations
