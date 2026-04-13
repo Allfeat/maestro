@@ -1,12 +1,10 @@
 //! Substrate RPC client with dynamic metadata decoding.
 
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use futures::StreamExt;
-use subxt::backend::{ChainHeadBackend, ChainHeadBackendBuilder};
-use subxt::client::{Block, OnlineClientAtBlock};
+use subxt::rpcs::client::reconnecting_rpc_client::RpcClient as ReconnectingRpcClient;
 use subxt::rpcs::RpcClient;
+use subxt::client::{Block, OnlineClientAtBlock};
 use subxt::{OnlineClient, PolkadotConfig};
 use tracing::{debug, instrument};
 
@@ -41,33 +39,23 @@ pub struct SubstrateClient {
 
 impl SubstrateClient {
     /// Connect to a Substrate node.
+    ///
+    /// Follows the canonical flow from `subxt/examples/rpc_client.rs`:
+    /// `ReconnectingRpcClient::builder().build(url)` → `RpcClient::new` →
+    /// `OnlineClient::from_rpc_client`. Both `ws://` and `wss://` URLs are
+    /// accepted.
     #[instrument(skip_all, fields(url = %config.ws_url))]
     pub async fn connect(config: SubstrateClientConfig) -> ChainResult<Self> {
         debug!("Connecting to node");
 
-        // Use insecure client for ws:// URLs, secure client for wss://
-        let rpc_client = if config.ws_url.starts_with("ws://") {
-            RpcClient::from_insecure_url(&config.ws_url)
-                .await
-                .map_err(|e| ChainError::ConnectionFailed(e.to_string()))?
-        } else {
-            RpcClient::from_url(&config.ws_url)
-                .await
-                .map_err(|e| ChainError::ConnectionFailed(e.to_string()))?
-        };
-
-        // Phase 2 hook: flip `use_historic_types` to `true` when historical sync lands.
-        let chain_config = PolkadotConfig::builder().use_historic_types(false).build();
-
-        let backend: ChainHeadBackend<PolkadotConfig> =
-            ChainHeadBackendBuilder::default().build_with_background_driver(rpc_client.clone());
-
-        let client = OnlineClient::<PolkadotConfig>::from_backend_with_config(
-            chain_config,
-            Arc::new(backend),
-        )
-        .await
-        .map_err(|e| ChainError::ConnectionFailed(e.to_string()))?;
+        let inner = ReconnectingRpcClient::builder()
+            .build(&config.ws_url)
+            .await
+            .map_err(|e| ChainError::ConnectionFailed(e.to_string()))?;
+        let rpc_client = RpcClient::new(inner);
+        let client = OnlineClient::<PolkadotConfig>::from_rpc_client(rpc_client)
+            .await
+            .map_err(|e| ChainError::ConnectionFailed(e.to_string()))?;
 
         debug!("Connected successfully");
 
@@ -95,26 +83,18 @@ impl BlockSource for SubstrateClient {
         Ok(BlockHash(hash.0))
     }
 
-    /// Current finalized block.
-    ///
-    /// In subxt 0.50, `OnlineClient::at_current_block()` returns the block at
-    /// the current finalized head under the `ChainHead` backend. This is a
-    /// silent bugfix versus the pre-0.50 code, which called `blocks().at_latest()`
-    /// — under `ChainHead` that returned the best block, not the finalized one,
-    /// so `finalized_head` previously over-reported by the finalization gap.
+    /// Current finalized head.
     async fn finalized_head(&self) -> ChainResult<FinalizedHead> {
         self.current_head().await
     }
 
-    /// Current best block.
+    /// Current best head.
     ///
-    /// The subxt 0.50 `ChainHead` backend does not expose a direct "best head"
-    /// accessor distinct from `at_current_block` — the finalized/best distinction
-    /// is carried entirely by the subscription stream (`stream_blocks` vs
-    /// `stream_best_blocks`). Consequently this method returns the finalized
-    /// head, which lags the best head by the finalization gap. In practice the
-    /// only caller is the startup debug log in `services/indexer.rs`; the
-    /// streaming path uses `subscribe_best` and is unaffected.
+    /// The 0.50 `ChainHead` backend carries the finalized/best distinction on
+    /// the subscription stream, not on the point-in-time accessor. This method
+    /// therefore returns the finalized head (lags the best head by the
+    /// finalization gap). The only caller is a startup debug log; the streaming
+    /// path uses `subscribe_best` and is unaffected.
     async fn best_head(&self) -> ChainResult<FinalizedHead> {
         self.current_head().await
     }
