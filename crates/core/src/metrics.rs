@@ -7,6 +7,8 @@
 use metrics::{counter, describe_counter, describe_histogram, histogram};
 use std::time::Instant;
 
+use crate::services::IndexMode;
+
 /// Initialize all metric descriptions.
 /// Call this once at startup before any metrics are recorded.
 pub fn init_metrics() {
@@ -38,6 +40,26 @@ pub fn init_metrics() {
         "db_query_duration_seconds",
         "Database query execution time in seconds"
     );
+    describe_counter!(
+        "backfill_blocks_indexed_total",
+        "Total number of blocks indexed by the historical backfill loop"
+    );
+    describe_counter!(
+        "backfill_progress_indexed",
+        "Cumulative blocks indexed in the current backfill run"
+    );
+    describe_counter!(
+        "backfill_progress_remaining",
+        "Remaining blocks to index in the current backfill run"
+    );
+    describe_counter!(
+        "backfill_fetch_retries_total",
+        "Total number of per-block fetch retries during backfill"
+    );
+    describe_counter!(
+        "backfill_aborted_total",
+        "Total number of backfill runs that aborted due to retry exhaustion"
+    );
 }
 
 /// Record a decode error.
@@ -50,9 +72,30 @@ pub fn record_decode_error(error_type: &str, pallet: &str) {
         .increment(1);
 }
 
-/// Record a successfully indexed block.
-pub fn record_block_indexed() {
-    counter!("blocks_indexed_total").increment(1);
+/// Record a successfully indexed block, labelled by mode.
+pub fn record_block_indexed(mode: IndexMode) {
+    counter!("blocks_indexed_total", "mode" => mode.as_label().to_string()).increment(1);
+}
+
+/// Record a single block successfully indexed by the backfill loop.
+pub fn record_backfill_block_indexed() {
+    counter!("backfill_blocks_indexed_total").increment(1);
+}
+
+/// Record cumulative backfill progress (indexed and remaining block counts).
+pub fn record_backfill_progress(indexed: u64, remaining: u64) {
+    counter!("backfill_progress_indexed").absolute(indexed);
+    counter!("backfill_progress_remaining").absolute(remaining);
+}
+
+/// Record a backfill fetch retry event.
+pub fn record_backfill_fetch_retry() {
+    counter!("backfill_fetch_retries_total").increment(1);
+}
+
+/// Record a backfill abort event.
+pub fn record_backfill_aborted() {
+    counter!("backfill_aborted_total").increment(1);
 }
 
 /// Record block processing duration.

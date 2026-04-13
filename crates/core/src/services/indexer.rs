@@ -23,6 +23,23 @@ use crate::ports::{
 // Configuration
 // =============================================================================
 
+/// Whether a block is being processed from the live subscription or the
+/// historical backfill loop. Drives metric labels and log distinction only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexMode {
+    Live,
+    Backfill,
+}
+
+impl IndexMode {
+    pub fn as_label(&self) -> &'static str {
+        match self {
+            IndexMode::Live => "live",
+            IndexMode::Backfill => "backfill",
+        }
+    }
+}
+
 /// Configuration for the indexer service.
 #[derive(Debug, Clone)]
 pub struct IndexerConfig {
@@ -500,7 +517,7 @@ impl<S: BlockSource, R: Repositories> IndexerService<S, R> {
             }
         }
 
-        record_block_indexed();
+        record_block_indexed(IndexMode::Live);
         trace!("Block processed successfully");
         Ok(true)
     }

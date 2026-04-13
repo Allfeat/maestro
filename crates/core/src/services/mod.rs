@@ -2,4 +2,4 @@
 
 mod indexer;
 
-pub use indexer::{IndexerConfig, IndexerService};
+pub use indexer::{BackfillConfig, IndexMode, IndexerConfig, IndexerService};
