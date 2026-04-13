@@ -28,7 +28,11 @@ mod tests {
     #[test]
     fn backfill_event_variants_construct_and_clone() {
         let events = [
-            BackfillEvent::Planned { from: 0, to: 1000, total: 1001 },
+            BackfillEvent::Planned {
+                from: 0,
+                to: 1000,
+                total: 1001,
+            },
             BackfillEvent::BlockFetched { number: 42 },
             BackfillEvent::BlockPersisted { number: 42 },
             BackfillEvent::RangeCompleted { from: 0, to: 1000 },

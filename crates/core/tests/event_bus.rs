@@ -29,10 +29,22 @@ async fn fanout_delivers_to_every_subscriber() {
     bus.emit_indexer(block_indexed(1));
     bus.emit_indexer(block_indexed(2));
 
-    let a1 = timeout(Duration::from_millis(100), a.recv()).await.unwrap().unwrap();
-    let a2 = timeout(Duration::from_millis(100), a.recv()).await.unwrap().unwrap();
-    let b1 = timeout(Duration::from_millis(100), b.recv()).await.unwrap().unwrap();
-    let b2 = timeout(Duration::from_millis(100), b.recv()).await.unwrap().unwrap();
+    let a1 = timeout(Duration::from_millis(100), a.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let a2 = timeout(Duration::from_millis(100), a.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let b1 = timeout(Duration::from_millis(100), b.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let b2 = timeout(Duration::from_millis(100), b.recv())
+        .await
+        .unwrap()
+        .unwrap();
 
     assert!(matches!(a1, IndexerEvent::BlockIndexed { number: 1, .. }));
     assert!(matches!(a2, IndexerEvent::BlockIndexed { number: 2, .. }));
@@ -75,7 +87,10 @@ async fn slow_subscriber_receives_lagged_but_bus_keeps_going() {
 
     // Drop the sender side so fast can finish.
     drop(bus);
-    let fast_count = timeout(Duration::from_secs(1), fast_task).await.unwrap().unwrap();
+    let fast_count = timeout(Duration::from_secs(1), fast_task)
+        .await
+        .unwrap()
+        .unwrap();
     assert!(fast_count >= 1, "fast subscriber saw at least one event");
 }
 

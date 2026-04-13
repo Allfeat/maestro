@@ -119,7 +119,11 @@ fn dispatch<E>(r: Result<E, RecvError>, f: fn(&E), channel: &'static str) {
     match r {
         Ok(ev) => f(&ev),
         Err(RecvError::Lagged(n)) => {
-            warn!(channel, dropped = n, "metrics_bridge lagged behind event bus");
+            warn!(
+                channel,
+                dropped = n,
+                "metrics_bridge lagged behind event bus"
+            );
         }
         Err(RecvError::Closed) => {
             debug!(channel, "event channel closed");
@@ -134,8 +138,8 @@ mod tests {
     use crate::models::BlockHash;
     use crate::services::IndexMode;
     use metrics::{Key, Label};
-    use metrics_util::debugging::{DebuggingRecorder, Snapshotter};
     use metrics_util::CompositeKey;
+    use metrics_util::debugging::{DebuggingRecorder, Snapshotter};
 
     fn counter_value(
         snap: &[(
@@ -175,9 +179,7 @@ mod tests {
                 attempt: 1,
                 error: "t".into(),
             });
-            handle_backfill(&BackfillEvent::Aborted {
-                reason: "x".into(),
-            });
+            handle_backfill(&BackfillEvent::Aborted { reason: "x".into() });
             handle_handler(&HandlerEvent::Persisted {
                 pallet: "Balances",
                 table: "transfers",

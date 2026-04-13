@@ -25,10 +25,7 @@ pub fn log_indexer(ev: &IndexerEvent) {
             duration_ms,
             ..
         } => {
-            debug!(
-                number,
-                extrinsics, events, duration_ms, "block indexed"
-            );
+            debug!(number, extrinsics, events, duration_ms, "block indexed");
         }
         IndexerEvent::CursorAdvanced { head, tail } => {
             debug!(head, tail, "cursor advanced");
@@ -150,11 +147,7 @@ pub fn spawn(bus: EventBus, mut shutdown: watch::Receiver<bool>) -> JoinHandle<(
     })
 }
 
-fn handle<E>(
-    r: Result<E, RecvError>,
-    log: fn(&E),
-    channel: &'static str,
-) {
+fn handle<E>(r: Result<E, RecvError>, log: fn(&E), channel: &'static str) {
     match r {
         Ok(ev) => log(&ev),
         Err(RecvError::Lagged(n)) => {

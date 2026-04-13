@@ -16,10 +16,7 @@ pub enum StopReason {
 #[derive(Debug, Clone)]
 pub enum IndexerEvent {
     /// Indexer started. Emitted once per run.
-    Started {
-        mode: IndexMode,
-        start_block: u64,
-    },
+    Started { mode: IndexMode, start_block: u64 },
     /// A block was fully indexed (extrinsics + events + handlers persisted).
     BlockIndexed {
         number: u64,
