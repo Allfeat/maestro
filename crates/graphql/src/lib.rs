@@ -24,8 +24,8 @@ mod server;
 mod types;
 
 pub use schema::{
-    build_core_schema, build_schema_with_query, convert_order, schema_builder, CoreQuery, Order,
-    PageInfo, MAX_QUERY_COMPLEXITY, MAX_QUERY_DEPTH,
+    CoreQuery, MAX_QUERY_COMPLEXITY, MAX_QUERY_DEPTH, Order, PageInfo, build_core_schema,
+    build_schema_with_query, convert_order, schema_builder,
 };
-pub use server::{serve, serve_with_shutdown, ServerConfig};
+pub use server::{ServerConfig, serve, serve_with_shutdown};
 pub use types::MaestroSchema;

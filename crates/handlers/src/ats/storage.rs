@@ -67,16 +67,14 @@ pub trait AtsStorage: Send + Sync {
     async fn insert_ats_version(&self, version: &AtsVersion) -> StorageResult<()>;
 
     /// Get a specific version of an ATS.
-    async fn get_ats_version(&self, ats_id: u64, version: u32) -> StorageResult<Option<AtsVersion>>;
+    async fn get_ats_version(&self, ats_id: u64, version: u32)
+    -> StorageResult<Option<AtsVersion>>;
 
     /// List all versions for an ATS.
     async fn list_versions_for_ats(&self, ats_id: u64) -> StorageResult<Vec<AtsVersion>>;
 
     /// Find an ATS version by commitment.
-    async fn find_by_commitment(
-        &self,
-        hash: &[u8; 32],
-    ) -> StorageResult<Option<AtsVersion>>;
+    async fn find_by_commitment(&self, hash: &[u8; 32]) -> StorageResult<Option<AtsVersion>>;
 
     // -------------------------------------------------------------------------
     // Revocation
@@ -336,7 +334,11 @@ impl AtsStorage for PgAtsStorage {
         Ok(())
     }
 
-    async fn get_ats_version(&self, ats_id: u64, version: u32) -> StorageResult<Option<AtsVersion>> {
+    async fn get_ats_version(
+        &self,
+        ats_id: u64,
+        version: u32,
+    ) -> StorageResult<Option<AtsVersion>> {
         let row = sqlx::query_as::<_, AtsVersionRow>(
             r#"
             SELECT id, ats_id, version, commitment, protocol_version,
@@ -372,10 +374,7 @@ impl AtsStorage for PgAtsStorage {
         rows.into_iter().map(AtsVersionRow::into_model).collect()
     }
 
-    async fn find_by_commitment(
-        &self,
-        hash: &[u8; 32],
-    ) -> StorageResult<Option<AtsVersion>> {
+    async fn find_by_commitment(&self, hash: &[u8; 32]) -> StorageResult<Option<AtsVersion>> {
         let row = sqlx::query_as::<_, AtsVersionRow>(
             r#"
             SELECT id, ats_id, version, commitment, protocol_version,

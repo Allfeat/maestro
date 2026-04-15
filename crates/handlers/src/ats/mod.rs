@@ -23,8 +23,8 @@
 //! registry.register(Box::new(bundle));
 //! ```
 
-mod handler;
 pub mod graphql;
+mod handler;
 pub mod models;
 pub mod storage;
 
@@ -38,7 +38,7 @@ use crate::HandlerBundle;
 pub use graphql::AtsQuery;
 pub use handler::AtsHandler;
 pub use models::{AtsVersion, AtsWork};
-pub use storage::{AtsStorage, AtsWorkFilter, PgAtsStorage, MIGRATIONS};
+pub use storage::{AtsStorage, AtsWorkFilter, MIGRATIONS, PgAtsStorage};
 
 /// Handler bundle for the ATS (Allfeat Timestamp) pallet.
 ///
@@ -75,9 +75,6 @@ impl HandlerBundle for AtsBundle {
 
     fn tables_to_purge(&self) -> &'static [&'static str] {
         // Order matters: children tables before parents (due to foreign keys)
-        &[
-            "ats_versions",
-            "ats_works",
-        ]
+        &["ats_versions", "ats_works"]
     }
 }

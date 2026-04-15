@@ -134,9 +134,7 @@ impl BalancesStorage for PgBalancesStorage {
         .await
         .map_err(|e| StorageError::QueryError(e.to_string()))?;
 
-        rows.into_iter()
-            .map(TransferRow::into_transfer)
-            .collect()
+        rows.into_iter().map(TransferRow::into_transfer).collect()
     }
 
     async fn list_transfers(

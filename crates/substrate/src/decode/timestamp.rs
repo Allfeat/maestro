@@ -23,10 +23,9 @@ pub(crate) async fn read_block_timestamp(
         .await
         .map_err(|e| ChainError::RpcError(format!("fetch Timestamp::Now: {}", e)))?;
     match value {
-        Some(v) => Ok(Some(
-            v.decode()
-                .map_err(|e| ChainError::RpcError(format!("decode Timestamp::Now: {}", e)))?,
-        )),
+        Some(v) => Ok(Some(v.decode().map_err(|e| {
+            ChainError::RpcError(format!("decode Timestamp::Now: {}", e))
+        })?)),
         None => Ok(None),
     }
 }

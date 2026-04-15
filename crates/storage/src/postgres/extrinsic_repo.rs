@@ -10,8 +10,8 @@ use maestro_core::ports::{
     Pagination,
 };
 
-use super::helpers::bytes_to_hash32;
 use super::SqlxResultExt;
+use super::helpers::bytes_to_hash32;
 
 // =============================================================================
 // Repository Implementation
@@ -35,11 +35,7 @@ impl ExtrinsicRepository for PgExtrinsicRepository {
             return Ok(());
         }
 
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .tx_err("begin insert_extrinsics")?;
+        let mut tx = self.pool.begin().await.tx_err("begin insert_extrinsics")?;
 
         for ext in extrinsics {
             sqlx::query(
@@ -107,9 +103,7 @@ impl ExtrinsicRepository for PgExtrinsicRepository {
         .await
         .query_err("list extrinsics for block")?;
 
-        rows.into_iter()
-            .map(ExtrinsicRow::into_extrinsic)
-            .collect()
+        rows.into_iter().map(ExtrinsicRow::into_extrinsic).collect()
     }
 
     async fn list_extrinsics(

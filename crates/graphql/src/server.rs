@@ -40,7 +40,10 @@ where
     Q: ObjectType + 'static,
 {
     let mut app = Router::new()
-        .route("/graphql", get(graphql_playground).post(graphql_handler::<Q>))
+        .route(
+            "/graphql",
+            get(graphql_playground).post(graphql_handler::<Q>),
+        )
         .route("/health", get(health_check))
         .with_state(schema);
 
@@ -67,7 +70,10 @@ where
     F: Future<Output = ()> + Send + 'static,
 {
     let mut app = Router::new()
-        .route("/graphql", get(graphql_playground).post(graphql_handler::<Q>))
+        .route(
+            "/graphql",
+            get(graphql_playground).post(graphql_handler::<Q>),
+        )
         .route("/health", get(health_check))
         .with_state(schema);
 

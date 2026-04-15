@@ -267,10 +267,18 @@ mod tests {
     #[test]
     fn test_handler_outputs_typed_roundtrip() {
         #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
-        struct Transfer { from: String, to: String, amount: u64 }
+        struct Transfer {
+            from: String,
+            to: String,
+            amount: u64,
+        }
 
         let mut outputs = HandlerOutputs::new();
-        let transfer = Transfer { from: "alice".into(), to: "bob".into(), amount: 100 };
+        let transfer = Transfer {
+            from: "alice".into(),
+            to: "bob".into(),
+            amount: 100,
+        };
 
         outputs.add("balances", "transfers", &transfer).unwrap();
 
@@ -321,9 +329,18 @@ mod tests {
 
         #[async_trait]
         impl PalletHandler for MockHandler {
-            fn pallet_name(&self) -> &'static str { self.0 }
-            fn priority(&self) -> i32 { self.1 }
-            async fn handle_event(&self, _: &RawEvent, _: &Block, _: Option<&RawExtrinsic>) -> DomainResult<HandlerOutputs> {
+            fn pallet_name(&self) -> &'static str {
+                self.0
+            }
+            fn priority(&self) -> i32 {
+                self.1
+            }
+            async fn handle_event(
+                &self,
+                _: &RawEvent,
+                _: &Block,
+                _: Option<&RawExtrinsic>,
+            ) -> DomainResult<HandlerOutputs> {
                 Ok(HandlerOutputs::new())
             }
         }

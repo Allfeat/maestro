@@ -27,8 +27,8 @@
 //! registry.register(Box::new(bundle));
 //! ```
 
-mod handler;
 pub mod graphql;
+mod handler;
 pub mod models;
 pub mod storage;
 
@@ -43,7 +43,7 @@ pub use graphql::MiddsQuery;
 pub use handler::{MusicalWorksHandler, RecordingsHandler, ReleasesHandler};
 pub use models::{Creator, Date, MusicalWork, PartyId, Recording, Release};
 pub use storage::{
-    MiddsStorage, MusicalWorkFilter, PgMiddsStorage, RecordingFilter, ReleaseFilter, MIGRATIONS,
+    MIGRATIONS, MiddsStorage, MusicalWorkFilter, PgMiddsStorage, RecordingFilter, ReleaseFilter,
 };
 
 /// Handler bundle for the MIDDS pallets.
@@ -92,10 +92,6 @@ impl HandlerBundle for MiddsBundle {
 
     fn tables_to_purge(&self) -> &'static [&'static str] {
         // Order matters: dependent tables first
-        &[
-            "midds_releases",
-            "midds_recordings",
-            "midds_musical_works",
-        ]
+        &["midds_releases", "midds_recordings", "midds_musical_works"]
     }
 }

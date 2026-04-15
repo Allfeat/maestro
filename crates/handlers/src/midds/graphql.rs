@@ -6,7 +6,7 @@ use async_graphql::{Context, Object, Result};
 use chrono::{DateTime, Utc};
 
 use maestro_core::ports::Pagination;
-use maestro_graphql::{convert_order, Order, PageInfo};
+use maestro_graphql::{Order, PageInfo, convert_order};
 
 use super::models::{
     Creator as CreatorModel, Date as DateModel, MusicalWork as MusicalWorkModel,
@@ -216,7 +216,9 @@ impl Recording {
     /// The musical work this recording is based on.
     async fn musical_work<'ctx>(&self, ctx: &Context<'ctx>) -> Result<Option<MusicalWork>> {
         let storage = ctx.data::<Arc<dyn MiddsStorage>>()?;
-        let work = storage.get_musical_work(self.musical_work_id as u64).await?;
+        let work = storage
+            .get_musical_work(self.musical_work_id as u64)
+            .await?;
         Ok(work.as_ref().map(MusicalWork::from))
     }
 }
@@ -363,7 +365,11 @@ impl From<maestro_core::ports::Connection<MusicalWorkModel>> for MusicalWorkConn
             page_info: PageInfo {
                 has_next_page: conn.page_info.has_next_page,
                 has_previous_page: conn.page_info.has_previous_page,
-                start_cursor: conn.page_info.start_cursor.as_ref().map(|c| c.value.clone()),
+                start_cursor: conn
+                    .page_info
+                    .start_cursor
+                    .as_ref()
+                    .map(|c| c.value.clone()),
                 end_cursor: conn.page_info.end_cursor.as_ref().map(|c| c.value.clone()),
             },
             total_count: conn.total_count,
@@ -398,7 +404,11 @@ impl From<maestro_core::ports::Connection<RecordingModel>> for RecordingConnecti
             page_info: PageInfo {
                 has_next_page: conn.page_info.has_next_page,
                 has_previous_page: conn.page_info.has_previous_page,
-                start_cursor: conn.page_info.start_cursor.as_ref().map(|c| c.value.clone()),
+                start_cursor: conn
+                    .page_info
+                    .start_cursor
+                    .as_ref()
+                    .map(|c| c.value.clone()),
                 end_cursor: conn.page_info.end_cursor.as_ref().map(|c| c.value.clone()),
             },
             total_count: conn.total_count,
@@ -433,7 +443,11 @@ impl From<maestro_core::ports::Connection<ReleaseModel>> for ReleaseConnection {
             page_info: PageInfo {
                 has_next_page: conn.page_info.has_next_page,
                 has_previous_page: conn.page_info.has_previous_page,
-                start_cursor: conn.page_info.start_cursor.as_ref().map(|c| c.value.clone()),
+                start_cursor: conn
+                    .page_info
+                    .start_cursor
+                    .as_ref()
+                    .map(|c| c.value.clone()),
                 end_cursor: conn.page_info.end_cursor.as_ref().map(|c| c.value.clone()),
             },
             total_count: conn.total_count,
@@ -473,7 +487,11 @@ impl MiddsQuery {
     // -------------------------------------------------------------------------
 
     /// Get a musical work by ID.
-    async fn musical_work<'ctx>(&self, ctx: &Context<'ctx>, id: i64) -> Result<Option<MusicalWork>> {
+    async fn musical_work<'ctx>(
+        &self,
+        ctx: &Context<'ctx>,
+        id: i64,
+    ) -> Result<Option<MusicalWork>> {
         let storage = ctx.data::<Arc<dyn MiddsStorage>>()?;
         let work = storage.get_musical_work(id as u64).await?;
         Ok(work.as_ref().map(MusicalWork::from))

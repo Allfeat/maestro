@@ -6,7 +6,7 @@ use async_graphql::{Context, Object, Result};
 use chrono::{DateTime, Utc};
 
 use maestro_core::ports::Pagination;
-use maestro_graphql::{convert_order, Order, PageInfo};
+use maestro_graphql::{Order, PageInfo, convert_order};
 
 use super::models::{AtsVersion as AtsVersionModel, AtsWork as AtsWorkModel};
 use super::storage::{AtsStorage, AtsWorkFilter};
@@ -37,7 +37,9 @@ impl AtsWork {
     /// Commitment of the latest version.
     async fn latest_commitment<'ctx>(&self, ctx: &Context<'ctx>) -> Result<Option<String>> {
         let storage = ctx.data::<Arc<dyn AtsStorage>>()?;
-        let version = storage.get_ats_version(self.id as u64, self.latest_version as u32).await?;
+        let version = storage
+            .get_ats_version(self.id as u64, self.latest_version as u32)
+            .await?;
         Ok(version.map(|v| format!("0x{}", hex::encode(v.commitment))))
     }
 
@@ -198,7 +200,9 @@ impl AtsQuery {
             ..Default::default()
         };
 
-        let connection = storage.list_ats_works(filter, pagination, convert_order(order)).await?;
+        let connection = storage
+            .list_ats_works(filter, pagination, convert_order(order))
+            .await?;
         Ok(AtsWorkConnection::from(connection))
     }
 
@@ -234,7 +238,9 @@ impl AtsQuery {
         version: i32,
     ) -> Result<Option<AtsVersion>> {
         let storage = ctx.data::<Arc<dyn AtsStorage>>()?;
-        let v = storage.get_ats_version(ats_id as u64, version as u32).await?;
+        let v = storage
+            .get_ats_version(ats_id as u64, version as u32)
+            .await?;
         Ok(v.map(AtsVersion::from))
     }
 

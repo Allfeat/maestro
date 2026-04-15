@@ -20,7 +20,7 @@ use maestro_core::ports::{HandlerOutputs, PalletHandler, RawEvent, RawExtrinsic}
 
 use super::models::{AtsVersion, AtsWork};
 use super::storage::AtsStorage;
-use crate::utils::{extract_field, parse_account, parse_hash256, parse_u32, parse_u64, parse_u8};
+use crate::utils::{extract_field, parse_account, parse_hash256, parse_u8, parse_u32, parse_u64};
 
 // =============================================================================
 // Handler
@@ -64,15 +64,14 @@ impl AtsHandler {
             None
         })?;
 
-        let commitment =
-            extract_field(data, &["commitment"], 2, parse_hash256).or_else(|| {
-                warn!(
-                    block = block.number,
-                    event = event.index,
-                    "Failed to parse 'commitment' in AtsCreated"
-                );
-                None
-            })?;
+        let commitment = extract_field(data, &["commitment"], 2, parse_hash256).or_else(|| {
+            warn!(
+                block = block.number,
+                event = event.index,
+                "Failed to parse 'commitment' in AtsCreated"
+            );
+            None
+        })?;
 
         let protocol_version =
             extract_field(data, &["protocol_version"], 3, parse_u8).or_else(|| {
@@ -128,15 +127,14 @@ impl AtsHandler {
             None
         })?;
 
-        let commitment =
-            extract_field(data, &["commitment"], 2, parse_hash256).or_else(|| {
-                warn!(
-                    block = block.number,
-                    event = event.index,
-                    "Failed to parse 'commitment' in AtsUpdated"
-                );
-                None
-            })?;
+        let commitment = extract_field(data, &["commitment"], 2, parse_hash256).or_else(|| {
+            warn!(
+                block = block.number,
+                event = event.index,
+                "Failed to parse 'commitment' in AtsUpdated"
+            );
+            None
+        })?;
 
         let protocol_version =
             extract_field(data, &["protocol_version"], 3, parse_u8).or_else(|| {
@@ -220,11 +218,7 @@ impl PalletHandler for AtsHandler {
             }
             "AtsRevoked" => {
                 if let Some(ats_id) = self.process_ats_revoked(event, block) {
-                    debug!(
-                        block = block.number,
-                        ats_id = ats_id,
-                        "ATS revoked"
-                    );
+                    debug!(block = block.number, ats_id = ats_id, "ATS revoked");
                     outputs.add("ats", "revocations", ats_id)?;
                 }
             }
@@ -389,10 +383,7 @@ mod tests {
         async fn list_versions_for_ats(&self, _ats_id: u64) -> StorageResult<Vec<AtsVersion>> {
             Ok(vec![])
         }
-        async fn find_by_commitment(
-            &self,
-            _hash: &[u8; 32],
-        ) -> StorageResult<Option<AtsVersion>> {
+        async fn find_by_commitment(&self, _hash: &[u8; 32]) -> StorageResult<Option<AtsVersion>> {
             Ok(None)
         }
         async fn delete_ats_work(&self, _id: u64) -> StorageResult<()> {

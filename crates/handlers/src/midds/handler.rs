@@ -134,7 +134,8 @@ impl MusicalWorksHandler {
             maestro_core::error::DomainError::DecodingError("Failed to parse midds_id".to_string())
         })?;
 
-        let data_cost = extract_field(data, &["data_cost", "data_colateral"], 2, parse_amount).unwrap_or(0);
+        let data_cost =
+            extract_field(data, &["data_cost", "data_colateral"], 2, parse_amount).unwrap_or(0);
 
         // Fetch full data from chain storage
         let block_hash = block.hash.clone();
@@ -333,7 +334,8 @@ impl RecordingsHandler {
             maestro_core::error::DomainError::DecodingError("Failed to parse midds_id".to_string())
         })?;
 
-        let data_cost = extract_field(data, &["data_cost", "data_colateral"], 2, parse_amount).unwrap_or(0);
+        let data_cost =
+            extract_field(data, &["data_cost", "data_colateral"], 2, parse_amount).unwrap_or(0);
 
         // Fetch full data from chain storage
         let block_hash = block.hash.clone();
@@ -599,7 +601,8 @@ impl ReleasesHandler {
             maestro_core::error::DomainError::DecodingError("Failed to parse midds_id".to_string())
         })?;
 
-        let data_cost = extract_field(data, &["data_cost", "data_colateral"], 2, parse_amount).unwrap_or(0);
+        let data_cost =
+            extract_field(data, &["data_cost", "data_colateral"], 2, parse_amount).unwrap_or(0);
 
         // Fetch full data from chain storage
         let block_hash = block.hash.clone();

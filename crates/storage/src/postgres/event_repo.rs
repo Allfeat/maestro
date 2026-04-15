@@ -9,8 +9,8 @@ use maestro_core::ports::{
     Connection, Cursor, Edge, EventFilter, EventRepository, OrderDirection, PageInfo, Pagination,
 };
 
-use super::helpers::bytes_to_hash32;
 use super::SqlxResultExt;
+use super::helpers::bytes_to_hash32;
 
 // =============================================================================
 // Repository Implementation

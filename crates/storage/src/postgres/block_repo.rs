@@ -9,9 +9,9 @@ use maestro_core::ports::{
     BlockFilter, BlockRepository, Connection, Cursor, Edge, OrderDirection, PageInfo, Pagination,
 };
 
+use super::SqlxResultExt;
 use super::database::Database;
 use super::helpers::{bytes_to_hash32, bytes_to_hash32_strict, bytes_to_optional_hash32};
-use super::SqlxResultExt;
 
 /// PostgreSQL implementation of BlockRepository.
 pub struct PgBlockRepository {

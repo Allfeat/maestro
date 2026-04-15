@@ -351,10 +351,7 @@ mod tests {
 
     #[test]
     fn test_extract_field_by_index() {
-        let data = json!([
-            "0x".to_string() + &"ef".repeat(32),
-            1000
-        ]);
+        let data = json!(["0x".to_string() + &"ef".repeat(32), 1000]);
 
         // No matching keys, should use index
         let from = extract_field(&data, &["from", "who"], 0, parse_account);

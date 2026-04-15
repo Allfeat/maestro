@@ -86,7 +86,8 @@ mod tests {
 
     #[test]
     fn test_parse_hash_invalid_chars() {
-        let result = parse_hash("0xgg11223344556677889900112233445566778899001122334455667788990011");
+        let result =
+            parse_hash("0xgg11223344556677889900112233445566778899001122334455667788990011");
         assert!(result.is_err());
         assert!(result.unwrap_err().message.contains("hexadecimal"));
     }
