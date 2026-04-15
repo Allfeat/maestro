@@ -6,6 +6,7 @@
 //! single-contiguous-range cursor invariant across crashes.
 
 use crate::error::ChainError;
+use crate::events::{BackfillEvent, EventBus};
 use crate::metrics::record_backfill_fetch_retry;
 use crate::models::IndexerCursor;
 use crate::ports::{BlockSource, RawBlock};
@@ -14,11 +15,13 @@ use tracing::warn;
 
 /// Retry wrapper around `BlockSource::fetch_block_at` with bounded exponential
 /// backoff (250ms → 10s). Returns `Err((block_number, ChainError))` on budget
-/// exhaustion so the caller can report the offending block.
+/// exhaustion so the caller can report the offending block. When an
+/// `EventBus` is provided, each retry is echoed as `BackfillEvent::FetchRetried`.
 pub async fn fetch_with_retry<S: BlockSource + ?Sized>(
     source: &S,
     block: u64,
     max_retries: u32,
+    event_bus: Option<&EventBus>,
 ) -> Result<RawBlock, (u64, ChainError)> {
     let mut delay = Duration::from_millis(250);
     let mut attempt: u32 = 0;
@@ -28,6 +31,13 @@ pub async fn fetch_with_retry<S: BlockSource + ?Sized>(
             Err(e) if attempt < max_retries => {
                 warn!(block, attempt, error = %e, "backfill fetch failed, retrying");
                 record_backfill_fetch_retry();
+                if let Some(bus) = event_bus {
+                    bus.emit_backfill(BackfillEvent::FetchRetried {
+                        number: block,
+                        attempt: attempt + 1,
+                        error: e.to_string(),
+                    });
+                }
                 tokio::time::sleep(delay).await;
                 delay = (delay * 2).min(Duration::from_secs(10));
                 attempt += 1;
@@ -177,7 +187,7 @@ mod retry_tests {
         let src = FlakySource {
             fail_count: AtomicU32::new(2),
         };
-        let result = fetch_with_retry(&src, 42, 5).await;
+        let result = fetch_with_retry(&src, 42, 5, None).await;
         assert!(result.is_ok(), "should succeed on 3rd attempt");
         assert_eq!(result.unwrap().number, 42);
     }
@@ -187,7 +197,7 @@ mod retry_tests {
         let src = FlakySource {
             fail_count: AtomicU32::new(10),
         };
-        let result = fetch_with_retry(&src, 42, 3).await;
+        let result = fetch_with_retry(&src, 42, 3, None).await;
         match result {
             Err((block, _)) => assert_eq!(block, 42),
             Ok(_) => panic!("expected retry exhaustion"),
@@ -280,14 +290,21 @@ pub struct BackfillRunner<S: BlockSource> {
     block_source: Arc<S>,
     config: BackfillConfig,
     chain_id: String,
+    event_bus: EventBus,
 }
 
 impl<S: BlockSource + 'static> BackfillRunner<S> {
-    pub fn new(block_source: Arc<S>, config: BackfillConfig, chain_id: String) -> Self {
+    pub fn new(
+        block_source: Arc<S>,
+        config: BackfillConfig,
+        chain_id: String,
+        event_bus: EventBus,
+    ) -> Self {
         Self {
             block_source,
             config,
             chain_id,
+            event_bus,
         }
     }
 }
@@ -322,11 +339,13 @@ impl<S: BlockSource + 'static> BackfillRunner<S> {
         let source = self.block_source.clone();
         let max_retries = self.config.max_fetch_retries;
         let concurrency = self.config.concurrency.max(1);
+        let fetch_bus = self.event_bus.clone();
 
         let mut fetched = futures::stream::iter(block_numbers)
             .map(move |n| {
                 let source = source.clone();
-                async move { fetch_with_retry(&*source, n, max_retries).await }
+                let bus = fetch_bus.clone();
+                async move { fetch_with_retry(&*source, n, max_retries, Some(&bus)).await }
             })
             .buffered(concurrency);
 
@@ -337,15 +356,27 @@ impl<S: BlockSource + 'static> BackfillRunner<S> {
                 return Err(IndexerError::ShutdownRequested);
             }
 
-            let raw_block = result.map_err(|(block, err)| {
-                crate::metrics::record_backfill_aborted();
-                IndexerError::BackfillAborted {
-                    block,
-                    reason: err.to_string(),
+            let raw_block = match result {
+                Ok(raw) => raw,
+                Err((block, err)) => {
+                    crate::metrics::record_backfill_aborted();
+                    let reason = err.to_string();
+                    self.event_bus.emit_backfill(BackfillEvent::Aborted {
+                        reason: reason.clone(),
+                    });
+                    return Err(IndexerError::BackfillAborted { block, reason });
                 }
-            })?;
+            };
+            let block_number = raw_block.number;
+            self.event_bus.emit_backfill(BackfillEvent::BlockFetched {
+                number: block_number,
+            });
 
             index_single_block(raw_block).await?;
+
+            self.event_bus.emit_backfill(BackfillEvent::BlockPersisted {
+                number: block_number,
+            });
 
             indexed += 1;
             crate::metrics::record_backfill_block_indexed();
@@ -357,6 +388,10 @@ impl<S: BlockSource + 'static> BackfillRunner<S> {
 
         info!(indexed, total, "backfill range complete");
         crate::metrics::record_backfill_progress(indexed, total.saturating_sub(indexed));
+        self.event_bus.emit_backfill(BackfillEvent::RangeCompleted {
+            from: range.from,
+            to: range.to,
+        });
         Ok(())
     }
 }

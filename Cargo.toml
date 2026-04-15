@@ -70,6 +70,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 metrics = "0.24"
 metrics-exporter-prometheus = "0.16"
 
+# TUI
+ratatui = "0.29"
+crossterm = "0.28"
+
 # Utilities
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.18", features = ["v4", "serde"] }

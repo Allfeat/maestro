@@ -38,6 +38,11 @@ pub struct Cli {
     #[arg(long, env = "JSON_LOGS", default_value = "false", value_parser = parse_bool)]
     pub json_logs: bool,
 
+    /// Enable the interactive TUI dashboard.
+    /// Ignored when combined with --json-logs, --migrate-only, --purge, or --export-schema.
+    #[arg(long, env = "TUI", default_value = "false", value_parser = parse_bool)]
+    pub tui: bool,
+
     /// Run database migrations and exit.
     #[arg(long, env = "MIGRATE_ONLY", default_value = "false", value_parser = parse_bool)]
     pub migrate_only: bool,
@@ -118,6 +123,7 @@ impl Cli {
     pub fn to_indexer_config(&self, chain_id: String) -> IndexerConfig {
         IndexerConfig {
             chain_id,
+            ws_url: self.ws_url.clone(),
             block_mode: self.block_mode,
             backfill: BackfillConfig {
                 start_block: self.start_block,

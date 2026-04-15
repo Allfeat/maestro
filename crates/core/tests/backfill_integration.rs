@@ -13,6 +13,7 @@ use tokio::sync::watch;
 use maestro_core::error::{
     ChainError, ChainResult, IndexerError, IndexerResult, StorageError, StorageResult,
 };
+use maestro_core::events::EventBus;
 use maestro_core::models::{Block, BlockHash, Event, Extrinsic, IndexerCursor};
 use maestro_core::ports::{
     BlockData, BlockFilter, BlockRepository, BlockSource, Connection, CursorRepository,
@@ -371,7 +372,7 @@ async fn run_plan(
     plan: BackfillPlan,
     cfg: BackfillConfig,
 ) -> IndexerResult<()> {
-    let runner = BackfillRunner::new(source, cfg, "test".into());
+    let runner = BackfillRunner::new(source, cfg, "test".into(), EventBus::noop());
     let (_tx, mut rx) = watch::channel(false);
     for r in plan.ranges {
         let repos = repos.clone();
@@ -498,7 +499,7 @@ async fn shutdown_mid_backfill_leaves_valid_cursor() {
     let repos = Arc::new(MockRepositories::new());
 
     let (tx, mut rx) = watch::channel(false);
-    let runner = BackfillRunner::new(source, mock_cfg(1, 3), "test".into());
+    let runner = BackfillRunner::new(source, mock_cfg(1, 3), "test".into(), EventBus::noop());
 
     // Spawn the shutdown after ~20 blocks. We use a synthetic delay: the
     // processor sleeps briefly on each block so the shutdown signal lands.

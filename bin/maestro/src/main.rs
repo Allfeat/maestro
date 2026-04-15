@@ -19,7 +19,7 @@ use metrics_exporter_prometheus::PrometheusBuilder;
 use tokio::signal;
 use tokio::sync::watch;
 use tracing::{Instrument, debug, error, info, info_span, warn};
-use tracing_subscriber::{EnvFilter, fmt};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 use async_graphql::{EmptyMutation, EmptySubscription, MergedObject, Schema};
 use maestro_core::error::IndexerError;
@@ -35,14 +35,22 @@ use maestro_storage::{Database, DatabaseConfig, PgRepositories};
 use maestro_substrate::{SubstrateClient, SubstrateClientConfig};
 
 mod cli;
+mod tui;
 
 use cli::Cli;
+use tui::{LogBuffer, TuiLogLayer};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
     let cli = Cli::parse();
-    init_tracing(&cli.log_level, cli.json_logs);
+
+    // TUI is only compatible with long-running indexing mode. Disable it for
+    // one-shot commands and when the user asked for JSON logs (pipe friendly).
+    let tui_active =
+        cli.tui && !cli.json_logs && !cli.migrate_only && !cli.purge && !cli.export_schema;
+
+    let log_buffer = init_tracing(&cli.log_level, cli.json_logs, tui_active);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -99,6 +107,21 @@ async fn main() -> Result<()> {
         maestro_core::events::logger::spawn(event_bus.clone(), shutdown_tx.subscribe());
     let metrics_bridge_handle =
         maestro_core::events::metrics_bridge::spawn(event_bus.clone(), shutdown_tx.subscribe());
+
+    // TUI — 4th event consumer, only active when explicitly requested.
+    let tui_handle = if tui_active {
+        let bus = event_bus.clone();
+        let tx = shutdown_tx.clone();
+        let rx = shutdown_tx.subscribe();
+        let logs = log_buffer.clone();
+        Some(tokio::spawn(async move {
+            if let Err(e) = tui::run(bus, tx, rx, logs).await {
+                eprintln!("tui error: {e:#}");
+            }
+        }))
+    } else {
+        None
+    };
 
     // ─────────────────────────────────────────────────────────────────────────
     // 🚀 STARTUP
@@ -196,6 +219,7 @@ async fn main() -> Result<()> {
         substrate_client.clone(),
         indexer_repositories.clone(),
         handlers,
+        event_bus.clone(),
     );
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -282,7 +306,15 @@ async fn main() -> Result<()> {
     }
     info!("   Press Ctrl+C to stop");
 
-    shutdown_signal().await;
+    // Also react to the shutdown watch: when the TUI task is active it
+    // captures Ctrl+C itself (raw mode swallows SIGINT) and signals quit via
+    // `shutdown_tx`. Without this branch, main would stay parked on the OS
+    // signal handler even though the TUI has already requested shutdown.
+    let mut main_shutdown_rx = shutdown_tx.subscribe();
+    tokio::select! {
+        _ = shutdown_signal() => {}
+        _ = wait_for_shutdown(&mut main_shutdown_rx) => {}
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // 🛑 SHUTDOWN
@@ -310,6 +342,13 @@ async fn main() -> Result<()> {
         Err(_) => warn!("⚠️  Metrics bridge shutdown timed out"),
     }
 
+    if let Some(handle) = tui_handle {
+        match tokio::time::timeout(std::time::Duration::from_secs(2), handle).await {
+            Ok(_) => debug!("TUI stopped"),
+            Err(_) => warn!("⚠️  TUI shutdown timed out"),
+        }
+    }
+
     db.close().await;
     graphql_db.close().await;
 
@@ -318,8 +357,23 @@ async fn main() -> Result<()> {
 }
 
 /// Initialize tracing subscriber.
-fn init_tracing(level: &str, json: bool) {
+///
+/// In TUI mode, stdout belongs to ratatui so the normal `fmt` layer cannot
+/// run. Instead we install a custom [`TuiLogLayer`] that pushes every event
+/// into a shared ring buffer, then hand that buffer to the TUI task so its
+/// logs panel can render them. Returns the buffer only when the TUI is
+/// active — all other modes keep the classic stdout/JSON output.
+fn init_tracing(level: &str, json: bool, tui_active: bool) -> Option<LogBuffer> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level));
+
+    if tui_active {
+        let buffer = LogBuffer::default();
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(TuiLogLayer::new(buffer.clone()))
+            .init();
+        return Some(buffer);
+    }
 
     if json {
         fmt().with_env_filter(filter).json().init();
@@ -332,6 +386,7 @@ fn init_tracing(level: &str, json: bool) {
             .with_line_number(false)
             .init();
     }
+    None
 }
 
 /// Mask password in database URL for logging.
@@ -344,6 +399,19 @@ fn mask_password(url_str: &str) -> String {
             url.to_string()
         }
         Err(_) => url_str.to_string(),
+    }
+}
+
+/// Await until `rx` observes `true`. Used in `main` to cooperate with the
+/// TUI, which forwards its quit-key to the shared shutdown channel.
+async fn wait_for_shutdown(rx: &mut watch::Receiver<bool>) {
+    if *rx.borrow() {
+        return;
+    }
+    while rx.changed().await.is_ok() {
+        if *rx.borrow() {
+            return;
+        }
     }
 }
 
