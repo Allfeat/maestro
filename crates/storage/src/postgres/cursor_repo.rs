@@ -8,7 +8,6 @@ use maestro_core::models::{BlockHash, IndexerCursor};
 use maestro_core::ports::CursorRepository;
 
 use super::SqlxResultExt;
-use super::database::Database;
 use super::helpers::bytes_to_hash32;
 
 /// PostgreSQL implementation of CursorRepository.
@@ -17,10 +16,8 @@ pub struct PgCursorRepository {
 }
 
 impl PgCursorRepository {
-    pub fn new(db: &Database) -> Self {
-        Self {
-            pool: db.pool().clone(),
-        }
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
     }
 }
 

@@ -10,7 +10,6 @@ use maestro_core::ports::{
 };
 
 use super::SqlxResultExt;
-use super::database::Database;
 use super::helpers::{bytes_to_hash32, bytes_to_hash32_strict, bytes_to_optional_hash32};
 
 /// PostgreSQL implementation of BlockRepository.
@@ -19,10 +18,8 @@ pub struct PgBlockRepository {
 }
 
 impl PgBlockRepository {
-    pub fn new(db: &Database) -> Self {
-        Self {
-            pool: db.pool().clone(),
-        }
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
     }
 }
 

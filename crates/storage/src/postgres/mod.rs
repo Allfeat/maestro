@@ -67,10 +67,10 @@ impl PgRepositories {
     pub fn new(db: Arc<Database>) -> Self {
         let pool = db.pool().clone();
         Self {
-            blocks: PgBlockRepository::new(&db),
+            blocks: PgBlockRepository::new(pool.clone()),
             extrinsics: PgExtrinsicRepository::new(pool.clone()),
             events: PgEventRepository::new(pool.clone()),
-            cursor: PgCursorRepository::new(&db),
+            cursor: PgCursorRepository::new(pool),
             db,
         }
     }
