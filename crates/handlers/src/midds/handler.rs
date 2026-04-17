@@ -54,16 +54,18 @@ impl MusicalWorksHandler {
             .chain_reader
             .read_storage_map_u64(block_hash, "MusicalWorks", "MiddsOf", midds_id)
             .await
-            .map_err(|e| DomainError::DecodingError(format!("Failed to fetch storage: {}", e)))?;
+            .map_err(|e| {
+                DomainError::decoding_with_source(format!("Failed to fetch storage: {}", e), e)
+            })?;
 
         match bytes {
             Some(data) => {
                 let work = allfeat_midds::musical_work::MusicalWork::decode(&mut &data[..])
                     .map_err(|e| {
-                        maestro_core::error::DomainError::DecodingError(format!(
-                            "Failed to decode MusicalWork: {}",
-                            e
-                        ))
+                        maestro_core::error::DomainError::decoding_with_source(
+                            format!("Failed to decode MusicalWork: {}", e),
+                            e,
+                        )
                     })?;
                 Ok(Some(work))
             }
@@ -82,7 +84,9 @@ impl MusicalWorksHandler {
             .chain_reader
             .read_storage_map_u64(block_hash, pallet, "MiddsInfoOf", midds_id)
             .await
-            .map_err(|e| DomainError::DecodingError(format!("Failed to fetch MiddsInfo: {}", e)))?;
+            .map_err(|e| {
+                DomainError::decoding_with_source(format!("Failed to fetch MiddsInfo: {}", e), e)
+            })?;
 
         // MiddsInfo structure (SCALE encoded):
         // - provider: AccountId (32 bytes)
@@ -122,7 +126,7 @@ impl MusicalWorksHandler {
                 event = event.index,
                 "Failed to parse 'provider' in MIDDSRegistered"
             );
-            maestro_core::error::DomainError::DecodingError("Failed to parse provider".to_string())
+            maestro_core::error::DomainError::decoding("Failed to parse provider")
         })?;
 
         let midds_id = extract_field(data, &["midds_id"], 1, parse_u64).ok_or_else(|| {
@@ -131,14 +135,14 @@ impl MusicalWorksHandler {
                 event = event.index,
                 "Failed to parse 'midds_id' in MIDDSRegistered"
             );
-            maestro_core::error::DomainError::DecodingError("Failed to parse midds_id".to_string())
+            maestro_core::error::DomainError::decoding("Failed to parse midds_id")
         })?;
 
         let data_cost =
             extract_field(data, &["data_cost", "data_colateral"], 2, parse_amount).unwrap_or(0);
 
         // Fetch full data from chain storage
-        let block_hash = block.hash.clone();
+        let block_hash = block.hash;
         let work_data = self.fetch_musical_work_data(&block_hash, midds_id).await?;
 
         let work_data = match work_data {
@@ -301,16 +305,18 @@ impl RecordingsHandler {
             .chain_reader
             .read_storage_map_u64(block_hash, "Recordings", "MiddsOf", midds_id)
             .await
-            .map_err(|e| DomainError::DecodingError(format!("Failed to fetch Recording: {}", e)))?;
+            .map_err(|e| {
+                DomainError::decoding_with_source(format!("Failed to fetch Recording: {}", e), e)
+            })?;
 
         match bytes {
             Some(data) => {
                 let recording = allfeat_midds::recording::Recording::decode(&mut &data[..])
                     .map_err(|e| {
-                        maestro_core::error::DomainError::DecodingError(format!(
-                            "Failed to decode Recording: {}",
-                            e
-                        ))
+                        maestro_core::error::DomainError::decoding_with_source(
+                            format!("Failed to decode Recording: {}", e),
+                            e,
+                        )
                     })?;
                 Ok(Some(recording))
             }
@@ -327,18 +333,18 @@ impl RecordingsHandler {
         let data = &event.data;
 
         let provider = extract_field(data, &["provider"], 0, parse_account).ok_or_else(|| {
-            maestro_core::error::DomainError::DecodingError("Failed to parse provider".to_string())
+            maestro_core::error::DomainError::decoding("Failed to parse provider")
         })?;
 
         let midds_id = extract_field(data, &["midds_id"], 1, parse_u64).ok_or_else(|| {
-            maestro_core::error::DomainError::DecodingError("Failed to parse midds_id".to_string())
+            maestro_core::error::DomainError::decoding("Failed to parse midds_id")
         })?;
 
         let data_cost =
             extract_field(data, &["data_cost", "data_colateral"], 2, parse_amount).unwrap_or(0);
 
         // Fetch full data from chain storage
-        let block_hash = block.hash.clone();
+        let block_hash = block.hash;
         let rec_data = self.fetch_recording_data(&block_hash, midds_id).await?;
 
         let rec_data = match rec_data {
@@ -398,7 +404,9 @@ impl RecordingsHandler {
             .chain_reader
             .read_storage_map_u64(block_hash, "Recordings", "MiddsInfoOf", midds_id)
             .await
-            .map_err(|e| DomainError::DecodingError(format!("Failed to fetch MiddsInfo: {}", e)))?;
+            .map_err(|e| {
+                DomainError::decoding_with_source(format!("Failed to fetch MiddsInfo: {}", e), e)
+            })?;
 
         // MiddsInfo structure (SCALE encoded):
         // - provider: AccountId (32 bytes)
@@ -538,16 +546,18 @@ impl ReleasesHandler {
             .chain_reader
             .read_storage_map_u64(block_hash, "Releases", "MiddsOf", midds_id)
             .await
-            .map_err(|e| DomainError::DecodingError(format!("Failed to fetch Release: {}", e)))?;
+            .map_err(|e| {
+                DomainError::decoding_with_source(format!("Failed to fetch Release: {}", e), e)
+            })?;
 
         match bytes {
             Some(data) => {
                 let release =
                     allfeat_midds::release::Release::decode(&mut &data[..]).map_err(|e| {
-                        maestro_core::error::DomainError::DecodingError(format!(
-                            "Failed to decode Release: {}",
-                            e
-                        ))
+                        maestro_core::error::DomainError::decoding_with_source(
+                            format!("Failed to decode Release: {}", e),
+                            e,
+                        )
                     })?;
                 Ok(Some(release))
             }
@@ -565,7 +575,9 @@ impl ReleasesHandler {
             .chain_reader
             .read_storage_map_u64(block_hash, "Releases", "MiddsInfoOf", midds_id)
             .await
-            .map_err(|e| DomainError::DecodingError(format!("Failed to fetch MiddsInfo: {}", e)))?;
+            .map_err(|e| {
+                DomainError::decoding_with_source(format!("Failed to fetch MiddsInfo: {}", e), e)
+            })?;
 
         // MiddsInfo structure (SCALE encoded):
         // - provider: AccountId (32 bytes)
@@ -594,18 +606,18 @@ impl ReleasesHandler {
         let data = &event.data;
 
         let provider = extract_field(data, &["provider"], 0, parse_account).ok_or_else(|| {
-            maestro_core::error::DomainError::DecodingError("Failed to parse provider".to_string())
+            maestro_core::error::DomainError::decoding("Failed to parse provider")
         })?;
 
         let midds_id = extract_field(data, &["midds_id"], 1, parse_u64).ok_or_else(|| {
-            maestro_core::error::DomainError::DecodingError("Failed to parse midds_id".to_string())
+            maestro_core::error::DomainError::decoding("Failed to parse midds_id")
         })?;
 
         let data_cost =
             extract_field(data, &["data_cost", "data_colateral"], 2, parse_amount).unwrap_or(0);
 
         // Fetch full data from chain storage
-        let block_hash = block.hash.clone();
+        let block_hash = block.hash;
         let rel_data = self.fetch_release_data(&block_hash, midds_id).await?;
 
         let rel_data = match rel_data {

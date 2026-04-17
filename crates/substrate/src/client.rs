@@ -51,13 +51,13 @@ impl SubstrateClient {
         let inner = ReconnectingRpcClient::builder()
             .build(&config.ws_url)
             .await
-            .map_err(|e| ChainError::ConnectionFailed(e.to_string()))?;
+            .map_err(|e| ChainError::connection_failed_with_source(e.to_string(), e))?;
         let rpc_client = RpcClient::new(inner);
         // `PolkadotConfig::default()` enables `use_historic_types: true` by default,
         // so historic (pre-V14) metadata decoding works without an explicit builder.
         let client = OnlineClient::<PolkadotConfig>::from_rpc_client(rpc_client)
             .await
-            .map_err(|e| ChainError::ConnectionFailed(e.to_string()))?;
+            .map_err(|e| ChainError::connection_failed_with_source(e.to_string(), e))?;
 
         debug!("Connected successfully");
 
@@ -69,7 +69,7 @@ impl SubstrateClient {
             .client
             .at_current_block()
             .await
-            .map_err(|e| ChainError::RpcError(e.to_string()))?;
+            .map_err(|e| ChainError::rpc_with_source(e.to_string(), e))?;
 
         Ok(FinalizedHead {
             number: at_block.block_number(),
@@ -106,12 +106,12 @@ impl BlockSource for SubstrateClient {
             .client
             .stream_blocks()
             .await
-            .map_err(|e| ChainError::SubscriptionError(e.to_string()))?;
+            .map_err(|e| ChainError::subscription_with_source(e.to_string(), e))?;
 
         let mapped = stream.then(|result| async move {
             match result {
                 Ok(block) => decode_raw_block(&block).await,
-                Err(e) => Err(ChainError::SubscriptionError(e.to_string())),
+                Err(e) => Err(ChainError::subscription_with_source(e.to_string(), e)),
             }
         });
 
@@ -123,12 +123,12 @@ impl BlockSource for SubstrateClient {
             .client
             .stream_best_blocks()
             .await
-            .map_err(|e| ChainError::SubscriptionError(e.to_string()))?;
+            .map_err(|e| ChainError::subscription_with_source(e.to_string(), e))?;
 
         let mapped = stream.then(|result| async move {
             match result {
                 Ok(block) => decode_raw_block(&block).await,
-                Err(e) => Err(ChainError::SubscriptionError(e.to_string())),
+                Err(e) => Err(ChainError::subscription_with_source(e.to_string(), e)),
             }
         });
 
@@ -140,23 +140,22 @@ impl BlockSource for SubstrateClient {
             .client
             .at_current_block()
             .await
-            .map_err(|e| ChainError::RpcError(e.to_string()))?;
+            .map_err(|e| ChainError::rpc_with_source(e.to_string(), e))?;
         Ok(at_block.spec_version())
     }
 
     async fn fetch_block_at(&self, number: u64) -> ChainResult<RawBlock> {
-        let at_block =
-            self.client
-                .at_block(number)
-                .await
-                .map_err(|e| ChainError::BlockFetchError {
-                    hash: format!("at_block({number})"),
-                    message: format!(
-                        "{e} (hint: historical blocks require an archive node; \
+        let at_block = self.client.at_block(number).await.map_err(|e| {
+            ChainError::block_fetch_with_source(
+                format!("at_block({number})"),
+                format!(
+                    "{e} (hint: historical blocks require an archive node; \
                          if the node was started without `--pruning archive`, the \
                          requested block may have been pruned and cannot be backfilled)"
-                    ),
-                })?;
+                ),
+                e,
+            )
+        })?;
         decode_raw_block_at(&at_block).await
     }
 

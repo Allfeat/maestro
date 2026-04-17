@@ -15,10 +15,10 @@ fn optional_fetch_raw(result: Result<Vec<u8>, StorageError>) -> ChainResult<Opti
     match result {
         Ok(bytes) => Ok(Some(bytes)),
         Err(StorageError::NoValueFound) => Ok(None),
-        Err(e) => Err(ChainError::RpcError(format!(
-            "Failed to fetch storage: {}",
-            e
-        ))),
+        Err(e) => Err(ChainError::rpc_with_source(
+            format!("Failed to fetch storage: {}", e),
+            e,
+        )),
     }
 }
 
@@ -31,11 +31,9 @@ impl StorageReader for SubstrateClient {
     ) -> ChainResult<Option<Vec<u8>>> {
         let hash = subxt::utils::H256::from_slice(&block_hash.0);
 
-        let at_block = self
-            .client
-            .at_block(hash)
-            .await
-            .map_err(|e| ChainError::RpcError(format!("Failed to resolve block: {}", e)))?;
+        let at_block = self.client.at_block(hash).await.map_err(|e| {
+            ChainError::rpc_with_source(format!("Failed to resolve block: {}", e), e)
+        })?;
 
         optional_fetch_raw(at_block.storage().fetch_raw(key.to_vec()).await)
     }
@@ -54,17 +52,17 @@ impl StorageReader for SubstrateClient {
         // subxt how to scale-encode the lookup value.
         let addr = subxt::dynamic::storage::<(Vec<u8>,), subxt::dynamic::Value>(pallet, item);
 
-        let at_block = self
-            .client
-            .at_block(hash)
-            .await
-            .map_err(|e| ChainError::RpcError(format!("Failed to resolve block: {}", e)))?;
+        let at_block = self.client.at_block(hash).await.map_err(|e| {
+            ChainError::rpc_with_source(format!("Failed to resolve block: {}", e), e)
+        })?;
 
         let value = at_block
             .storage()
             .try_fetch(addr, (map_key.to_vec(),))
             .await
-            .map_err(|e| ChainError::RpcError(format!("Failed to fetch storage: {}", e)))?;
+            .map_err(|e| {
+                ChainError::rpc_with_source(format!("Failed to fetch storage: {}", e), e)
+            })?;
 
         Ok(value.map(|v| v.bytes().to_vec()))
     }
@@ -84,17 +82,17 @@ impl StorageReader for SubstrateClient {
         // this module).
         let addr = subxt::dynamic::storage::<(u128,), subxt::dynamic::Value>(pallet, item);
 
-        let at_block = self
-            .client
-            .at_block(hash)
-            .await
-            .map_err(|e| ChainError::RpcError(format!("Failed to resolve block: {}", e)))?;
+        let at_block = self.client.at_block(hash).await.map_err(|e| {
+            ChainError::rpc_with_source(format!("Failed to resolve block: {}", e), e)
+        })?;
 
         let value = at_block
             .storage()
             .try_fetch(addr, (key as u128,))
             .await
-            .map_err(|e| ChainError::RpcError(format!("Failed to fetch storage: {}", e)))?;
+            .map_err(|e| {
+                ChainError::rpc_with_source(format!("Failed to fetch storage: {}", e), e)
+            })?;
 
         Ok(value.map(|v| v.bytes().to_vec()))
     }

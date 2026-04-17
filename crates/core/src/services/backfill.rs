@@ -173,7 +173,7 @@ mod retry_tests {
             let remaining = self.fail_count.load(Ordering::SeqCst);
             if remaining > 0 {
                 self.fail_count.fetch_sub(1, Ordering::SeqCst);
-                return Err(ChainError::RpcError(format!("flaky at {number}")));
+                return Err(ChainError::rpc(format!("flaky at {number}")));
             }
             Ok(stub_block(number))
         }

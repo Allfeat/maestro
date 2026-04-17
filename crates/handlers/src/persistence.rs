@@ -148,7 +148,7 @@ mod tests {
                 async move {
                     c.fetch_add(1, Ordering::SeqCst);
                     if val == 2 {
-                        Err(StorageError::QueryError("test error".to_string()))
+                        Err(StorageError::query("test error"))
                     } else {
                         Ok(())
                     }
@@ -216,7 +216,7 @@ mod tests {
 
         let result = persist_batch(
             &entities,
-            |_| async { Err(StorageError::QueryError("batch failed".to_string())) },
+            |_| async { Err(StorageError::query("batch failed")) },
             "numbers",
             100,
         )

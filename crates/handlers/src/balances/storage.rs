@@ -67,7 +67,7 @@ impl BalancesStorage for PgBalancesStorage {
             .pool
             .begin()
             .await
-            .map_err(|e| StorageError::TransactionError(e.to_string()))?;
+            .map_err(|e| StorageError::transaction_with_source(e.to_string(), e))?;
 
         for transfer in transfers {
             sqlx::query(
@@ -92,12 +92,12 @@ impl BalancesStorage for PgBalancesStorage {
             .bind(transfer.timestamp)
             .execute(&mut *tx)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
         }
 
         tx.commit()
             .await
-            .map_err(|e| StorageError::TransactionError(e.to_string()))?;
+            .map_err(|e| StorageError::transaction_with_source(e.to_string(), e))?;
 
         Ok(())
     }
@@ -114,7 +114,7 @@ impl BalancesStorage for PgBalancesStorage {
         .bind(id)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         row.map(TransferRow::into_transfer).transpose()
     }
@@ -132,7 +132,7 @@ impl BalancesStorage for PgBalancesStorage {
         .bind(block_number as i64)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         rows.into_iter().map(TransferRow::into_transfer).collect()
     }
@@ -210,7 +210,7 @@ impl BalancesStorage for PgBalancesStorage {
             sqlx::query_as(&query)
                 .fetch_all(&self.pool)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?
+                .map_err(|e| StorageError::query_with_source(e.to_string(), e))?
         } else {
             let mut q = sqlx::query_as::<_, TransferRow>(&query);
             if let Some(bn) = filter.block_number_gte {
@@ -236,7 +236,7 @@ impl BalancesStorage for PgBalancesStorage {
             }
             q.fetch_all(&self.pool)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?
+                .map_err(|e| StorageError::query_with_source(e.to_string(), e))?
         };
 
         let has_more = rows.len() > limit as usize;
@@ -275,7 +275,7 @@ impl BalancesStorage for PgBalancesStorage {
             .bind(from_block as i64)
             .execute(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
         Ok(result.rows_affected())
     }
 }
@@ -322,7 +322,7 @@ impl TransferRow {
 /// Convert Vec<u8> to [u8; 32] with descriptive error.
 fn bytes_to_hash32(bytes: Vec<u8>, field: &str) -> StorageResult<[u8; 32]> {
     bytes.try_into().map_err(|v: Vec<u8>| {
-        StorageError::SerializationError(format!(
+        StorageError::serialization(format!(
             "{} has invalid length: expected 32, got {}",
             field,
             v.len()
@@ -333,7 +333,7 @@ fn bytes_to_hash32(bytes: Vec<u8>, field: &str) -> StorageResult<[u8; 32]> {
 /// Parse amount string to u128.
 fn parse_amount(s: &str) -> StorageResult<u128> {
     s.parse().map_err(|e| {
-        StorageError::SerializationError(format!("amount parse error: {} (value: {})", e, s))
+        StorageError::serialization(format!("amount parse error: {} (value: {})", e, s))
     })
 }
 

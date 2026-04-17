@@ -16,7 +16,7 @@ pub(crate) async fn decode_raw_block(block: &SubstrateBlock) -> ChainResult<RawB
     let at_block = block
         .at()
         .await
-        .map_err(|e| ChainError::RpcError(e.to_string()))?;
+        .map_err(|e| ChainError::rpc_with_source(e.to_string(), e))?;
 
     decode_raw_block_at(&at_block).await
 }
@@ -33,7 +33,7 @@ pub(crate) async fn decode_raw_block_at(
     let header = at_block
         .block_header()
         .await
-        .map_err(|e| ChainError::RpcError(e.to_string()))?;
+        .map_err(|e| ChainError::rpc_with_source(e.to_string(), e))?;
 
     // Fetch events once here and share the handle between the two decoders.
     // Extrinsics need them for per-extrinsic success/error lookup; events
@@ -42,7 +42,7 @@ pub(crate) async fn decode_raw_block_at(
         .events()
         .fetch()
         .await
-        .map_err(|e| ChainError::RpcError(e.to_string()))?;
+        .map_err(|e| ChainError::rpc_with_source(e.to_string(), e))?;
 
     let extrinsics = extrinsics::decode_extrinsics(at_block, &events).await?;
     let raw_events = events::decode_events(&events);

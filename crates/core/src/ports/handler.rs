@@ -69,10 +69,13 @@ impl HandlerOutputs {
         value: T,
     ) -> DomainResult<()> {
         let json = serde_json::to_value(value).map_err(|e| {
-            DomainError::DecodingError(format!(
-                "Failed to serialize handler output for {}:{}: {}",
-                pallet, entity_type, e
-            ))
+            DomainError::decoding_with_source(
+                format!(
+                    "Failed to serialize handler output for {}:{}: {}",
+                    pallet, entity_type, e
+                ),
+                e,
+            )
         })?;
 
         // Estimate the size of the JSON value
@@ -80,7 +83,7 @@ impl HandlerOutputs {
 
         // Check if adding this would exceed the limit
         if self.current_size + value_size > self.max_size {
-            return Err(DomainError::ValidationError(format!(
+            return Err(DomainError::validation(format!(
                 "Handler outputs size limit exceeded: {} + {} > {} bytes",
                 self.current_size, value_size, self.max_size
             )));

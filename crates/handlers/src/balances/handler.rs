@@ -78,7 +78,7 @@ impl PalletHandlerExt for BalancesHandler {
         Some(Transfer {
             id: format!("{}-{}", block.number, event.index),
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            block_hash: block.hash,
             event_index: event.index,
             extrinsic_index: event.extrinsic_index,
             from,
@@ -161,7 +161,7 @@ mod tests {
     #[async_trait]
     impl BalancesStorage for FailingStorage {
         async fn insert_transfers(&self, _transfers: &[Transfer]) -> StorageResult<()> {
-            Err(StorageError::QueryError("failing-storage test boom".into()))
+            Err(StorageError::query("failing-storage test boom"))
         }
 
         async fn get_transfer(&self, _id: &str) -> StorageResult<Option<Transfer>> {

@@ -166,7 +166,7 @@ impl MiddsStorage for PgMiddsStorage {
 
     async fn insert_musical_work(&self, work: &MusicalWork) -> StorageResult<()> {
         let creators_json = serde_json::to_value(&work.creators)
-            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+            .map_err(|e| StorageError::serialization_with_source(e.to_string(), e))?;
 
         sqlx::query(
             r#"
@@ -195,7 +195,7 @@ impl MiddsStorage for PgMiddsStorage {
         .bind(creators_json)
         .execute(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         Ok(())
     }
@@ -212,7 +212,7 @@ impl MiddsStorage for PgMiddsStorage {
         .bind(id as i64)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         row.map(MusicalWorkRow::into_model).transpose()
     }
@@ -229,7 +229,7 @@ impl MiddsStorage for PgMiddsStorage {
         .bind(iswc)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         row.map(MusicalWorkRow::into_model).transpose()
     }
@@ -298,7 +298,7 @@ impl MiddsStorage for PgMiddsStorage {
             sqlx::query_as(&query)
                 .fetch_all(&self.pool)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?
+                .map_err(|e| StorageError::query_with_source(e.to_string(), e))?
         } else {
             let mut q = sqlx::query_as::<_, MusicalWorkRow>(&query);
             if let Some(ref provider) = filter.provider {
@@ -321,7 +321,7 @@ impl MiddsStorage for PgMiddsStorage {
             }
             q.fetch_all(&self.pool)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?
+                .map_err(|e| StorageError::query_with_source(e.to_string(), e))?
         };
 
         let has_more = rows.len() > limit as usize;
@@ -360,7 +360,7 @@ impl MiddsStorage for PgMiddsStorage {
             .bind(id as i64)
             .execute(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
         Ok(())
     }
 
@@ -368,7 +368,7 @@ impl MiddsStorage for PgMiddsStorage {
         let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM midds_musical_works")
             .fetch_one(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
         Ok(row.0 as u64)
     }
 
@@ -378,13 +378,13 @@ impl MiddsStorage for PgMiddsStorage {
 
     async fn insert_recording(&self, recording: &Recording) -> StorageResult<()> {
         let artist_json = serde_json::to_value(&recording.artist)
-            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+            .map_err(|e| StorageError::serialization_with_source(e.to_string(), e))?;
         let genres_json = serde_json::to_value(&recording.genres)
-            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+            .map_err(|e| StorageError::serialization_with_source(e.to_string(), e))?;
         let producers_json = serde_json::to_value(&recording.producers)
-            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+            .map_err(|e| StorageError::serialization_with_source(e.to_string(), e))?;
         let performers_json = serde_json::to_value(&recording.performers)
-            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+            .map_err(|e| StorageError::serialization_with_source(e.to_string(), e))?;
 
         sqlx::query(
             r#"
@@ -417,7 +417,7 @@ impl MiddsStorage for PgMiddsStorage {
         .bind(performers_json)
         .execute(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         Ok(())
     }
@@ -435,7 +435,7 @@ impl MiddsStorage for PgMiddsStorage {
         .bind(id as i64)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         row.map(RecordingRow::into_model).transpose()
     }
@@ -453,7 +453,7 @@ impl MiddsStorage for PgMiddsStorage {
         .bind(isrc)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         row.map(RecordingRow::into_model).transpose()
     }
@@ -515,7 +515,7 @@ impl MiddsStorage for PgMiddsStorage {
             sqlx::query_as(&query)
                 .fetch_all(&self.pool)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?
+                .map_err(|e| StorageError::query_with_source(e.to_string(), e))?
         } else {
             let mut q = sqlx::query_as::<_, RecordingRow>(&query);
             if let Some(ref provider) = filter.provider {
@@ -532,7 +532,7 @@ impl MiddsStorage for PgMiddsStorage {
             }
             q.fetch_all(&self.pool)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?
+                .map_err(|e| StorageError::query_with_source(e.to_string(), e))?
         };
 
         let has_more = rows.len() > limit as usize;
@@ -580,7 +580,7 @@ impl MiddsStorage for PgMiddsStorage {
         .bind(work_id as i64)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         rows.into_iter().map(RecordingRow::into_model).collect()
     }
@@ -590,7 +590,7 @@ impl MiddsStorage for PgMiddsStorage {
             .bind(id as i64)
             .execute(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
         Ok(())
     }
 
@@ -598,7 +598,7 @@ impl MiddsStorage for PgMiddsStorage {
         let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM midds_recordings")
             .fetch_one(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
         Ok(row.0 as u64)
     }
 
@@ -608,9 +608,9 @@ impl MiddsStorage for PgMiddsStorage {
 
     async fn insert_release(&self, release: &Release) -> StorageResult<()> {
         let creator_json = serde_json::to_value(&release.creator)
-            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+            .map_err(|e| StorageError::serialization_with_source(e.to_string(), e))?;
         let recording_ids_json = serde_json::to_value(&release.recording_ids)
-            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+            .map_err(|e| StorageError::serialization_with_source(e.to_string(), e))?;
 
         let release_date = chrono::NaiveDate::from_ymd_opt(
             release.date.year as i32,
@@ -649,7 +649,7 @@ impl MiddsStorage for PgMiddsStorage {
         .bind(&release.manufacturer_name)
         .execute(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         Ok(())
     }
@@ -667,7 +667,7 @@ impl MiddsStorage for PgMiddsStorage {
         .bind(id as i64)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         row.map(ReleaseRow::into_model).transpose()
     }
@@ -685,7 +685,7 @@ impl MiddsStorage for PgMiddsStorage {
         .bind(ean)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         row.map(ReleaseRow::into_model).transpose()
     }
@@ -751,7 +751,7 @@ impl MiddsStorage for PgMiddsStorage {
             sqlx::query_as(&query)
                 .fetch_all(&self.pool)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?
+                .map_err(|e| StorageError::query_with_source(e.to_string(), e))?
         } else {
             let mut q = sqlx::query_as::<_, ReleaseRow>(&query);
             if let Some(ref provider) = filter.provider {
@@ -771,7 +771,7 @@ impl MiddsStorage for PgMiddsStorage {
             }
             q.fetch_all(&self.pool)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?
+                .map_err(|e| StorageError::query_with_source(e.to_string(), e))?
         };
 
         let has_more = rows.len() > limit as usize;
@@ -810,7 +810,7 @@ impl MiddsStorage for PgMiddsStorage {
             .bind(id as i64)
             .execute(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
         Ok(())
     }
 
@@ -818,7 +818,7 @@ impl MiddsStorage for PgMiddsStorage {
         let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM midds_releases")
             .fetch_one(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
         Ok(row.0 as u64)
     }
 
@@ -835,7 +835,7 @@ impl MiddsStorage for PgMiddsStorage {
                 .bind(from_block as i64)
                 .execute(&self.pool)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?;
+                .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
         total_deleted += releases_result.rows_affected();
 
         let recordings_result =
@@ -843,7 +843,7 @@ impl MiddsStorage for PgMiddsStorage {
                 .bind(from_block as i64)
                 .execute(&self.pool)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?;
+                .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
         total_deleted += recordings_result.rows_affected();
 
         let works_result =
@@ -851,7 +851,7 @@ impl MiddsStorage for PgMiddsStorage {
                 .bind(from_block as i64)
                 .execute(&self.pool)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?;
+                .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
         total_deleted += works_result.rows_affected();
 
         Ok(total_deleted)
@@ -884,7 +884,7 @@ struct MusicalWorkRow {
 impl MusicalWorkRow {
     fn into_model(self) -> StorageResult<MusicalWork> {
         let creators: Vec<Creator> = serde_json::from_value(self.creators)
-            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+            .map_err(|e| StorageError::serialization_with_source(e.to_string(), e))?;
 
         Ok(MusicalWork {
             id: self.id as u64,
@@ -931,13 +931,13 @@ struct RecordingRow {
 impl RecordingRow {
     fn into_model(self) -> StorageResult<Recording> {
         let artist: PartyId = serde_json::from_value(self.artist)
-            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+            .map_err(|e| StorageError::serialization_with_source(e.to_string(), e))?;
         let genres: Vec<String> = serde_json::from_value(self.genres)
-            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+            .map_err(|e| StorageError::serialization_with_source(e.to_string(), e))?;
         let producers: Vec<PartyId> = serde_json::from_value(self.producers)
-            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+            .map_err(|e| StorageError::serialization_with_source(e.to_string(), e))?;
         let performers: Vec<PartyId> = serde_json::from_value(self.performers)
-            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+            .map_err(|e| StorageError::serialization_with_source(e.to_string(), e))?;
 
         Ok(Recording {
             id: self.id as u64,
@@ -987,9 +987,9 @@ struct ReleaseRow {
 impl ReleaseRow {
     fn into_model(self) -> StorageResult<Release> {
         let creator: PartyId = serde_json::from_value(self.creator)
-            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+            .map_err(|e| StorageError::serialization_with_source(e.to_string(), e))?;
         let recording_ids: Vec<u64> = serde_json::from_value(self.recording_ids)
-            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+            .map_err(|e| StorageError::serialization_with_source(e.to_string(), e))?;
 
         let date = self
             .release_date
@@ -1034,7 +1034,7 @@ impl ReleaseRow {
 /// Convert Vec<u8> to [u8; 32] with descriptive error.
 fn bytes_to_hash32(bytes: Vec<u8>, field: &str) -> StorageResult<[u8; 32]> {
     bytes.try_into().map_err(|v: Vec<u8>| {
-        StorageError::SerializationError(format!(
+        StorageError::serialization(format!(
             "{} has invalid length: expected 32, got {}",
             field,
             v.len()
@@ -1047,7 +1047,7 @@ fn parse_data_cost(s: &str) -> StorageResult<u128> {
     // Remove decimal point if present (we store as integer)
     let s = s.split('.').next().unwrap_or(s);
     s.parse().map_err(|e| {
-        StorageError::SerializationError(format!("data_cost parse error: {} (value: {})", e, s))
+        StorageError::serialization(format!("data_cost parse error: {} (value: {})", e, s))
     })
 }
 

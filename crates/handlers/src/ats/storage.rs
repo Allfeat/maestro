@@ -123,7 +123,7 @@ impl AtsStorage for PgAtsStorage {
         .bind(work.latest_version as i32)
         .execute(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         Ok(())
     }
@@ -139,7 +139,7 @@ impl AtsStorage for PgAtsStorage {
         .bind(id as i64)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         row.map(AtsWorkRow::into_model).transpose()
     }
@@ -150,7 +150,7 @@ impl AtsStorage for PgAtsStorage {
             .bind(id as i64)
             .execute(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         Ok(())
     }
@@ -214,7 +214,7 @@ impl AtsStorage for PgAtsStorage {
             sqlx::query_as(&query)
                 .fetch_all(&self.pool)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?
+                .map_err(|e| StorageError::query_with_source(e.to_string(), e))?
         } else {
             let mut q = sqlx::query_as::<_, AtsWorkRow>(&query);
             if let Some(ref owner) = filter.owner {
@@ -234,7 +234,7 @@ impl AtsStorage for PgAtsStorage {
             }
             q.fetch_all(&self.pool)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?
+                .map_err(|e| StorageError::query_with_source(e.to_string(), e))?
         };
 
         let has_more = rows.len() > limit as usize;
@@ -280,7 +280,7 @@ impl AtsStorage for PgAtsStorage {
         .bind(&owner.0[..])
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         rows.into_iter().map(AtsWorkRow::into_model).collect()
     }
@@ -289,7 +289,7 @@ impl AtsStorage for PgAtsStorage {
         let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM ats_works")
             .fetch_one(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         Ok(row.0 as u64)
     }
@@ -299,7 +299,7 @@ impl AtsStorage for PgAtsStorage {
             .bind(&owner.0[..])
             .fetch_one(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         Ok(row.0 as u64)
     }
@@ -329,7 +329,7 @@ impl AtsStorage for PgAtsStorage {
         .bind(version.event_index as i32)
         .execute(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         Ok(())
     }
@@ -351,7 +351,7 @@ impl AtsStorage for PgAtsStorage {
         .bind(version as i32)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         row.map(AtsVersionRow::into_model).transpose()
     }
@@ -369,7 +369,7 @@ impl AtsStorage for PgAtsStorage {
         .bind(ats_id as i64)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         rows.into_iter().map(AtsVersionRow::into_model).collect()
     }
@@ -388,7 +388,7 @@ impl AtsStorage for PgAtsStorage {
         .bind(&hash[..])
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| StorageError::QueryError(e.to_string()))?;
+        .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         row.map(AtsVersionRow::into_model).transpose()
     }
@@ -402,7 +402,7 @@ impl AtsStorage for PgAtsStorage {
             .bind(id as i64)
             .execute(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
 
         Ok(())
     }
@@ -420,14 +420,14 @@ impl AtsStorage for PgAtsStorage {
                 .bind(from_block as i64)
                 .execute(&self.pool)
                 .await
-                .map_err(|e| StorageError::QueryError(e.to_string()))?;
+                .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
         total_deleted += versions_result.rows_affected();
 
         let works_result = sqlx::query("DELETE FROM ats_works WHERE created_at_block >= $1")
             .bind(from_block as i64)
             .execute(&self.pool)
             .await
-            .map_err(|e| StorageError::QueryError(e.to_string()))?;
+            .map_err(|e| StorageError::query_with_source(e.to_string(), e))?;
         total_deleted += works_result.rows_affected();
 
         Ok(total_deleted)
@@ -493,7 +493,7 @@ impl AtsVersionRow {
 /// Convert Vec<u8> to [u8; 32] with descriptive error.
 fn bytes_to_hash32(bytes: Vec<u8>, field: &str) -> StorageResult<[u8; 32]> {
     bytes.try_into().map_err(|v: Vec<u8>| {
-        StorageError::SerializationError(format!(
+        StorageError::serialization(format!(
             "{} has invalid length: expected 32, got {}",
             field,
             v.len()

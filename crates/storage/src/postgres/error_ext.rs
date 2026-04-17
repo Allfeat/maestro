@@ -1,7 +1,10 @@
-//! Extension traits for SQLx error handling with context.
+//! Extension trait for SQLx error handling with context.
 //!
-//! Provides concise error mapping for database operations while preserving
-//! meaningful context about what operation failed.
+//! Every `.query_err()` now captures both the human-readable context and
+//! the original `sqlx::Error` as a `#[source]`. Log output keeps the old
+//! format (because [`StorageError`]'s `Display` only renders `context`),
+//! but `err.source()` now walks down to the sqlx metadata — pool state,
+//! SQLSTATE codes, row counts etc.
 
 use maestro_core::error::StorageError;
 
@@ -9,12 +12,12 @@ use maestro_core::error::StorageError;
 ///
 /// Instead of writing:
 /// ```ignore
-/// .await.map_err(|e| StorageError::QueryError(e.to_string()))?;
+/// .await.map_err(|e| StorageError::query_with_source("get block", e))?;
 /// ```
 ///
 /// You can write:
 /// ```ignore
-/// .await.query_err("get block by number")?;
+/// .await.query_err("get block")?;
 /// ```
 pub trait SqlxResultExt<T> {
     /// Convert a SQLx error into a `StorageError::QueryError` with context.
@@ -29,21 +32,22 @@ pub trait SqlxResultExt<T> {
 
 impl<T> SqlxResultExt<T> for Result<T, sqlx::Error> {
     fn query_err(self, context: &str) -> Result<T, StorageError> {
-        self.map_err(|e| StorageError::QueryError(format!("{}: {}", context, e)))
+        self.map_err(|e| StorageError::query_with_source(format!("{context}: {e}"), e))
     }
 
     fn tx_err(self, context: &str) -> Result<T, StorageError> {
-        self.map_err(|e| StorageError::TransactionError(format!("{}: {}", context, e)))
+        self.map_err(|e| StorageError::transaction_with_source(format!("{context}: {e}"), e))
     }
 
     fn conn_err(self, context: &str) -> Result<T, StorageError> {
-        self.map_err(|e| StorageError::ConnectionError(format!("{}: {}", context, e)))
+        self.map_err(|e| StorageError::connection_with_source(format!("{context}: {e}"), e))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::error::Error;
 
     #[test]
     fn test_query_err_formats_message() {
@@ -51,9 +55,11 @@ mod tests {
         let result = err.query_err("fetch block");
 
         match result {
-            Err(StorageError::QueryError(msg)) => {
-                assert!(msg.starts_with("fetch block:"));
+            Err(e @ StorageError::QueryError { .. }) => {
+                let msg = e.to_string();
+                assert!(msg.starts_with("Query execution error: fetch block:"));
                 assert!(msg.contains("no rows"));
+                assert!(e.source().is_some(), "sqlx source must be preserved");
             }
             _ => panic!("Expected QueryError"),
         }
@@ -65,8 +71,10 @@ mod tests {
         let result = err.tx_err("begin transaction");
 
         match result {
-            Err(StorageError::TransactionError(msg)) => {
-                assert!(msg.starts_with("begin transaction:"));
+            Err(e @ StorageError::TransactionError { .. }) => {
+                let msg = e.to_string();
+                assert!(msg.starts_with("Transaction error: begin transaction:"));
+                assert!(e.source().is_some());
             }
             _ => panic!("Expected TransactionError"),
         }
@@ -78,8 +86,10 @@ mod tests {
         let result = err.conn_err("connect to database");
 
         match result {
-            Err(StorageError::ConnectionError(msg)) => {
-                assert!(msg.starts_with("connect to database:"));
+            Err(e @ StorageError::ConnectionError { .. }) => {
+                let msg = e.to_string();
+                assert!(msg.starts_with("Database connection error: connect to database:"));
+                assert!(e.source().is_some());
             }
             _ => panic!("Expected ConnectionError"),
         }
@@ -102,8 +112,8 @@ mod tests {
         let err: Result<(), sqlx::Error> = Err(sqlx::Error::RowNotFound);
         let result = err.query_err("insert block row #123");
 
-        if let Err(StorageError::QueryError(msg)) = result {
-            assert!(msg.contains("insert block row #123"));
+        if let Err(e @ StorageError::QueryError { .. }) = result {
+            assert!(e.to_string().contains("insert block row #123"));
         } else {
             panic!("Expected QueryError with context");
         }

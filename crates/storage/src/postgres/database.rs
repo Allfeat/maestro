@@ -117,7 +117,9 @@ impl Database {
         sqlx::migrate!("./migrations")
             .run(&self.pool)
             .await
-            .map_err(|e| maestro_core::error::StorageError::MigrationError(e.to_string()))?;
+            .map_err(|e| {
+                maestro_core::error::StorageError::migration_with_source(e.to_string(), e)
+            })?;
 
         debug!("Migrations completed");
 

@@ -7,7 +7,7 @@ use maestro_core::error::{StorageError, StorageResult};
 /// Returns an error if the length doesn't match.
 pub fn bytes_to_hash32(bytes: Vec<u8>, field_name: &str) -> StorageResult<[u8; 32]> {
     bytes.try_into().map_err(|v: Vec<u8>| {
-        StorageError::SerializationError(format!(
+        StorageError::serialization(format!(
             "{} has invalid length: expected 32, got {}",
             field_name,
             v.len()
@@ -23,7 +23,7 @@ pub fn bytes_to_hash32_strict(bytes: Vec<u8>, field_name: &str) -> StorageResult
     let arr = bytes_to_hash32(bytes, field_name)?;
 
     if arr == [0u8; 32] {
-        return Err(StorageError::SerializationError(format!(
+        return Err(StorageError::serialization(format!(
             "{} is all zeros, which indicates data corruption",
             field_name
         )));

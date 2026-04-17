@@ -102,12 +102,12 @@ impl BlockSource for MockBlockSource {
             && *n > 0
         {
             *n -= 1;
-            return Err(ChainError::RpcError(format!("mock flaky at {number}")));
+            return Err(ChainError::rpc(format!("mock flaky at {number}")));
         }
         self.blocks
             .get(&number)
             .cloned()
-            .ok_or_else(|| ChainError::RpcError(format!("no block {number}")))
+            .ok_or_else(|| ChainError::rpc(format!("no block {number}")))
     }
 
     async fn earliest_v14_block(&self) -> ChainResult<u64> {
@@ -165,7 +165,7 @@ impl MockRepositories {
                 },
             );
         }
-        let last_hash = g.blocks.get(&last).map(|b| b.hash.clone()).unwrap();
+        let last_hash = g.blocks.get(&last).map(|b| b.hash).unwrap();
         g.cursor = Some(IndexerCursor {
             chain_id: "test".into(),
             first_indexed_block: first,
@@ -304,7 +304,7 @@ impl Repositories for MockRepositories {
                     chain_id: data.chain_id.into(),
                     first_indexed_block: n,
                     last_indexed_block: n,
-                    last_indexed_hash: data.block.hash.clone(),
+                    last_indexed_hash: data.block.hash,
                     updated_at: chrono::Utc::now(),
                 });
             }
@@ -313,7 +313,7 @@ impl Repositories for MockRepositories {
                     chain_id: c.chain_id,
                     first_indexed_block: c.first_indexed_block,
                     last_indexed_block: n,
-                    last_indexed_hash: data.block.hash.clone(),
+                    last_indexed_hash: data.block.hash,
                     updated_at: chrono::Utc::now(),
                 });
             }

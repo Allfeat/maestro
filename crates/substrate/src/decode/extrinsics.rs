@@ -20,7 +20,7 @@ pub(crate) async fn decode_extrinsics(
         .extrinsics()
         .fetch()
         .await
-        .map_err(|e| ChainError::RpcError(e.to_string()))?;
+        .map_err(|e| ChainError::rpc_with_source(e.to_string(), e))?;
 
     let results = build_extrinsic_results(events);
     let mut raw_extrinsics = Vec::new();

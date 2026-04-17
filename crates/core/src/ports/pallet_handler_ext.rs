@@ -254,7 +254,7 @@ mod tests {
         async fn persist(&self, _models: &[Self::Model]) -> crate::error::StorageResult<()> {
             self.persisted_calls.fetch_add(1, Ordering::SeqCst);
             if self.fail {
-                Err(crate::error::StorageError::QueryError("boom".into()))
+                Err(crate::error::StorageError::query("boom"))
             } else {
                 Ok(())
             }

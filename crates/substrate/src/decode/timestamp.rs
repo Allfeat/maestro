@@ -21,10 +21,10 @@ pub(crate) async fn read_block_timestamp(
         .storage()
         .try_fetch(addr, ())
         .await
-        .map_err(|e| ChainError::RpcError(format!("fetch Timestamp::Now: {}", e)))?;
+        .map_err(|e| ChainError::rpc_with_source(format!("fetch Timestamp::Now: {}", e), e))?;
     match value {
         Some(v) => Ok(Some(v.decode().map_err(|e| {
-            ChainError::RpcError(format!("decode Timestamp::Now: {}", e))
+            ChainError::rpc_with_source(format!("decode Timestamp::Now: {}", e), e)
         })?)),
         None => Ok(None),
     }

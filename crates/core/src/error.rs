@@ -7,52 +7,69 @@
 //! - [`ChainError`] - Blockchain RPC errors
 //! - [`IndexerError`] - Top-level orchestration errors
 //!
-//! Error conversion is automatic via `From` implementations,
-//! allowing `?` to work across error boundaries.
+//! Each String-wrapping variant carries an optional `#[source]` of the
+//! underlying error (sqlx, subxt, serde…). `to_string()` remains stable
+//! (only the context string is rendered), and `err.source()` walks the
+//! chain for callers that need to inspect the original cause.
 
 use thiserror::Error;
+
+/// Boxed trait object used to carry originating errors across hexagonal
+/// boundaries without pulling `sqlx` / `subxt` into the `core` crate.
+pub type BoxedSource = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 // =============================================================================
 // Domain Errors
 // =============================================================================
 
 /// Business logic and domain rule violations.
-///
-/// These errors represent problems in the indexer's domain logic,
-/// such as data validation failures or missing required data.
 #[derive(Debug, Error)]
 pub enum DomainError {
-    /// Block was not found in storage.
-    #[error("Block not found: {0}")]
-    BlockNotFound(u64),
-
-    /// Block hash failed validation.
-    #[error("Invalid block hash: {0}")]
-    InvalidBlockHash(String),
-
-    /// Account ID failed validation.
-    #[error("Invalid account ID: {0}")]
-    InvalidAccountId(String),
-
     /// Data decoding/deserialization failed.
-    #[error("Decoding error: {0}")]
-    DecodingError(String),
-
-    /// Chain reorganization was detected.
-    #[error("Chain reorg detected at block {0}")]
-    ReorgDetected(u64),
-
-    /// No handler registered for a pallet.
-    #[error("Handler not found for pallet: {0}")]
-    HandlerNotFound(String),
+    #[error("Decoding error: {message}")]
+    DecodingError {
+        message: String,
+        #[source]
+        source: Option<BoxedSource>,
+    },
 
     /// Generic validation error.
-    #[error("Validation error: {0}")]
-    ValidationError(String),
+    #[error("Validation error: {message}")]
+    ValidationError {
+        message: String,
+        #[source]
+        source: Option<BoxedSource>,
+    },
 
     /// Storage operation failed.
-    #[error("Storage error: {0}")]
+    #[error(transparent)]
     Storage(#[from] StorageError),
+}
+
+impl DomainError {
+    pub fn decoding(message: impl Into<String>) -> Self {
+        Self::DecodingError {
+            message: message.into(),
+            source: None,
+        }
+    }
+
+    pub fn decoding_with_source<E>(message: impl Into<String>, source: E) -> Self
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        Self::DecodingError {
+            message: message.into(),
+            source: Some(Box::new(source)),
+        }
+    }
+
+    pub fn validation(message: impl Into<String>) -> Self {
+        Self::ValidationError {
+            message: message.into(),
+            source: None,
+        }
+    }
 }
 
 // =============================================================================
@@ -60,38 +77,47 @@ pub enum DomainError {
 // =============================================================================
 
 /// Database and repository errors.
-///
-/// These errors originate from storage operations like queries,
-/// transactions, and data serialization.
 #[derive(Debug, Error)]
 pub enum StorageError {
     /// Failed to establish database connection.
-    #[error("Database connection error: {0}")]
-    ConnectionError(String),
+    #[error("Database connection error: {message}")]
+    ConnectionError {
+        message: String,
+        #[source]
+        source: Option<BoxedSource>,
+    },
 
     /// SQL query execution failed.
-    #[error("Query execution error: {0}")]
-    QueryError(String),
-
-    /// Requested record was not found.
-    #[error("Record not found: {0}")]
-    NotFound(String),
-
-    /// Database constraint was violated (unique, foreign key, etc.).
-    #[error("Constraint violation: {0}")]
-    ConstraintViolation(String),
+    #[error("Query execution error: {message}")]
+    QueryError {
+        message: String,
+        #[source]
+        source: Option<BoxedSource>,
+    },
 
     /// Database migration failed.
-    #[error("Migration error: {0}")]
-    MigrationError(String),
+    #[error("Migration error: {message}")]
+    MigrationError {
+        message: String,
+        #[source]
+        source: Option<BoxedSource>,
+    },
 
     /// Transaction commit/rollback failed.
-    #[error("Transaction error: {0}")]
-    TransactionError(String),
+    #[error("Transaction error: {message}")]
+    TransactionError {
+        message: String,
+        #[source]
+        source: Option<BoxedSource>,
+    },
 
     /// Data serialization/deserialization failed.
-    #[error("Serialization error: {0}")]
-    SerializationError(String),
+    #[error("Serialization error: {message}")]
+    SerializationError {
+        message: String,
+        #[source]
+        source: Option<BoxedSource>,
+    },
 
     /// `persist_block_atomic` was given a block whose number neither extends the
     /// cursor range upward nor fills its downward boundary.
@@ -99,31 +125,116 @@ pub enum StorageError {
     CursorGapViolation { block: u64, first: u64, last: u64 },
 }
 
+impl StorageError {
+    pub fn connection(message: impl Into<String>) -> Self {
+        Self::ConnectionError {
+            message: message.into(),
+            source: None,
+        }
+    }
+
+    pub fn query(message: impl Into<String>) -> Self {
+        Self::QueryError {
+            message: message.into(),
+            source: None,
+        }
+    }
+
+    pub fn query_with_source<E>(message: impl Into<String>, source: E) -> Self
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        Self::QueryError {
+            message: message.into(),
+            source: Some(Box::new(source)),
+        }
+    }
+
+    pub fn migration(message: impl Into<String>) -> Self {
+        Self::MigrationError {
+            message: message.into(),
+            source: None,
+        }
+    }
+
+    pub fn migration_with_source<E>(message: impl Into<String>, source: E) -> Self
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        Self::MigrationError {
+            message: message.into(),
+            source: Some(Box::new(source)),
+        }
+    }
+
+    pub fn transaction_with_source<E>(message: impl Into<String>, source: E) -> Self
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        Self::TransactionError {
+            message: message.into(),
+            source: Some(Box::new(source)),
+        }
+    }
+
+    pub fn connection_with_source<E>(message: impl Into<String>, source: E) -> Self
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        Self::ConnectionError {
+            message: message.into(),
+            source: Some(Box::new(source)),
+        }
+    }
+
+    pub fn serialization(message: impl Into<String>) -> Self {
+        Self::SerializationError {
+            message: message.into(),
+            source: None,
+        }
+    }
+
+    pub fn serialization_with_source<E>(message: impl Into<String>, source: E) -> Self
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        Self::SerializationError {
+            message: message.into(),
+            source: Some(Box::new(source)),
+        }
+    }
+}
+
 // =============================================================================
 // Chain Errors
 // =============================================================================
 
 /// Blockchain RPC and connectivity errors.
-///
-/// These errors occur when communicating with the Substrate node
-/// via WebSocket RPC.
 #[derive(Debug, Error)]
 pub enum ChainError {
     /// WebSocket connection failed.
-    #[error("Connection failed: {0}")]
-    ConnectionFailed(String),
+    #[error("Connection failed: {message}")]
+    ConnectionFailed {
+        message: String,
+        #[source]
+        source: Option<BoxedSource>,
+    },
 
     /// RPC request failed.
-    #[error("RPC error: {0}")]
-    RpcError(String),
+    #[error("RPC error: {message}")]
+    RpcError {
+        message: String,
+        #[source]
+        source: Option<BoxedSource>,
+    },
 
     /// Block subscription failed or disconnected.
-    #[error("Subscription error: {0}")]
-    SubscriptionError(String),
-
-    /// Runtime metadata could not be fetched or parsed.
-    #[error("Metadata error: {0}")]
-    MetadataError(String),
+    #[error("Subscription error: {message}")]
+    SubscriptionError {
+        message: String,
+        #[source]
+        source: Option<BoxedSource>,
+    },
 
     /// Block could not be fetched.
     #[error("Block fetch error at hash {hash}: {message}")]
@@ -132,11 +243,77 @@ pub enum ChainError {
         hash: String,
         /// Error details.
         message: String,
+        #[source]
+        source: Option<BoxedSource>,
     },
+}
 
-    /// Operation timed out waiting for block.
-    #[error("Timeout waiting for block {0}")]
-    Timeout(u64),
+impl ChainError {
+    pub fn rpc(message: impl Into<String>) -> Self {
+        Self::RpcError {
+            message: message.into(),
+            source: None,
+        }
+    }
+
+    pub fn rpc_with_source<E>(message: impl Into<String>, source: E) -> Self
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        Self::RpcError {
+            message: message.into(),
+            source: Some(Box::new(source)),
+        }
+    }
+
+    pub fn connection_failed(message: impl Into<String>) -> Self {
+        Self::ConnectionFailed {
+            message: message.into(),
+            source: None,
+        }
+    }
+
+    pub fn connection_failed_with_source<E>(message: impl Into<String>, source: E) -> Self
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        Self::ConnectionFailed {
+            message: message.into(),
+            source: Some(Box::new(source)),
+        }
+    }
+
+    pub fn subscription(message: impl Into<String>) -> Self {
+        Self::SubscriptionError {
+            message: message.into(),
+            source: None,
+        }
+    }
+
+    pub fn subscription_with_source<E>(message: impl Into<String>, source: E) -> Self
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        Self::SubscriptionError {
+            message: message.into(),
+            source: Some(Box::new(source)),
+        }
+    }
+
+    pub fn block_fetch_with_source<E>(
+        hash: impl Into<String>,
+        message: impl Into<String>,
+        source: E,
+    ) -> Self
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        Self::BlockFetchError {
+            hash: hash.into(),
+            message: message.into(),
+            source: Some(Box::new(source)),
+        }
+    }
 }
 
 // =============================================================================
@@ -150,15 +327,15 @@ pub enum ChainError {
 #[derive(Debug, Error)]
 pub enum IndexerError {
     /// Domain logic error.
-    #[error("Domain error: {0}")]
+    #[error(transparent)]
     Domain(#[from] DomainError),
 
     /// Storage/database error.
-    #[error("Storage error: {0}")]
+    #[error(transparent)]
     Storage(#[from] StorageError),
 
     /// Blockchain connectivity error.
-    #[error("Chain error: {0}")]
+    #[error(transparent)]
     Chain(#[from] ChainError),
 
     /// Invalid configuration.
@@ -175,10 +352,6 @@ pub enum IndexerError {
         /// Genesis hash expected by database.
         expected: String,
     },
-
-    /// Indexer is already running.
-    #[error("Indexer already running")]
-    AlreadyRunning,
 
     /// Graceful shutdown was requested.
     ///
@@ -229,7 +402,7 @@ mod tests {
     #[test]
     fn test_error_conversion_chain() {
         // Storage -> Domain -> Indexer
-        let storage_err = StorageError::QueryError("db failed".into());
+        let storage_err = StorageError::query("db failed");
         let domain_err: DomainError = storage_err.into();
         let indexer_err: IndexerError = domain_err.into();
 
@@ -237,7 +410,7 @@ mod tests {
         assert!(indexer_err.to_string().contains("db failed"));
 
         // Chain -> Indexer
-        let chain_err = ChainError::RpcError("rpc failed".into());
+        let chain_err = ChainError::rpc("rpc failed");
         let indexer_err: IndexerError = chain_err.into();
         assert!(indexer_err.to_string().contains("rpc failed"));
     }
@@ -288,5 +461,25 @@ mod tests {
         assert!(msg.contains("999"));
         assert!(msg.contains("100"));
         assert!(msg.contains("200"));
+    }
+
+    // New: source() chain walks through wrapped errors.
+    #[test]
+    fn test_query_error_source_carries_underlying() {
+        use std::error::Error;
+
+        #[derive(Debug)]
+        struct FakeSqlxErr;
+        impl std::fmt::Display for FakeSqlxErr {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "rollback failed: connection lost")
+            }
+        }
+        impl std::error::Error for FakeSqlxErr {}
+
+        let err = StorageError::query_with_source("insert block", FakeSqlxErr);
+        assert!(err.to_string().contains("insert block"));
+        let src = err.source().expect("source should be present");
+        assert!(src.to_string().contains("rollback failed"));
     }
 }
