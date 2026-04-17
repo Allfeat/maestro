@@ -10,7 +10,7 @@ use maestro_graphql::{Order, PageInfo, convert_order};
 
 use super::models::{AtsVersion as AtsVersionModel, AtsWork as AtsWorkModel};
 use super::storage::{AtsStorage, AtsWorkFilter};
-use crate::graphql_utils::{parse_account, parse_hash, validate_pagination_first};
+use crate::graphql_utils::{parse_account, parse_hash, validate_cursor, validate_pagination_first};
 
 // -----------------------------------------------------------------------------
 // GraphQL Types
@@ -184,6 +184,8 @@ impl AtsQuery {
         created_at_timestamp_lte: Option<DateTime<Utc>>,
         #[graphql(default)] order: Order,
     ) -> Result<AtsWorkConnection> {
+        validate_cursor(&after, "after")?;
+
         let storage = ctx.data::<Arc<dyn AtsStorage>>()?;
 
         let filter = AtsWorkFilter {

@@ -11,7 +11,7 @@ use axum::{
     response::{Html, IntoResponse},
     routing::get,
 };
-use tracing::{debug, info};
+use tracing::debug;
 
 /// Server configuration.
 #[derive(Debug, Clone)]
@@ -29,34 +29,6 @@ impl Default for ServerConfig {
             enable_playground: true,
         }
     }
-}
-
-/// Start the GraphQL server with any schema type.
-pub async fn serve<Q>(
-    schema: Schema<Q, EmptyMutation, EmptySubscription>,
-    config: ServerConfig,
-) -> Result<(), std::io::Error>
-where
-    Q: ObjectType + 'static,
-{
-    let mut app = Router::new()
-        .route(
-            "/graphql",
-            get(graphql_playground).post(graphql_handler::<Q>),
-        )
-        .route("/health", get(health_check))
-        .with_state(schema);
-
-    if config.enable_playground {
-        app = app.route("/", get(graphql_playground));
-    }
-
-    let addr = format!("{}:{}", config.host, config.port);
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
-
-    info!("⚡ GraphQL server listening on http://{}", addr);
-
-    axum::serve(listener, app).await
 }
 
 /// Start the GraphQL server with graceful shutdown support.

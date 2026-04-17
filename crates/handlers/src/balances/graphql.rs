@@ -10,7 +10,7 @@ use maestro_graphql::{Order, PageInfo, convert_order};
 
 use super::models::Transfer as TransferModel;
 use super::storage::{BalancesStorage, TransferFilter};
-use crate::graphql_utils::{parse_account, validate_pagination_first};
+use crate::graphql_utils::{parse_account, validate_cursor, validate_pagination_first};
 
 /// Transfer type (Balances pallet).
 #[derive(async_graphql::SimpleObject)]
@@ -119,6 +119,8 @@ impl BalancesQuery {
         account: Option<String>,
         #[graphql(default)] order: Order,
     ) -> Result<TransferConnection> {
+        validate_cursor(&after, "after")?;
+
         let balances = ctx.data::<Arc<dyn BalancesStorage>>()?;
 
         let filter = TransferFilter {

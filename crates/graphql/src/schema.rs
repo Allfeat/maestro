@@ -5,12 +5,14 @@
 
 use std::sync::Arc;
 
-use async_graphql::{
-    Context, EmptyMutation, EmptySubscription, Object, Result, Schema, SchemaBuilder,
-};
+use async_graphql::{Context, Object, Result};
 
 use maestro_core::ports::{
     BlockFilter, EventFilter, ExtrinsicFilter, OrderDirection, Pagination, Repositories,
+};
+
+use crate::validation::{
+    parse_account, parse_hash, validate_cursor, validate_filter_string, validate_pagination_first,
 };
 
 // Re-export schema types from the schema crate
@@ -18,8 +20,6 @@ pub use maestro_graphql_schema::{
     Block, BlockConnection, BlockEdge, Event, EventConnection, EventEdge, Extrinsic,
     ExtrinsicConnection, ExtrinsicEdge, IndexerStatus, Order, PageInfo,
 };
-
-use crate::types::MaestroSchema;
 
 // -----------------------------------------------------------------------------
 // Schema Configuration
@@ -32,54 +32,6 @@ pub const MAX_QUERY_DEPTH: usize = 15;
 /// Maximum query complexity score (DoS protection).
 /// Each field has a default complexity of 1, nested objects multiply.
 pub const MAX_QUERY_COMPLEXITY: usize = 500;
-
-// -----------------------------------------------------------------------------
-// Schema Builder
-// -----------------------------------------------------------------------------
-
-/// Build a GraphQL schema with just the core query (blocks, events, extrinsics).
-///
-/// Use this when no handler extensions are needed.
-/// Includes query depth and complexity limits for DoS protection.
-pub fn build_core_schema<R: Repositories + 'static>(repositories: Arc<R>) -> MaestroSchema {
-    let repos: Arc<dyn Repositories> = repositories;
-    Schema::build(CoreQuery, EmptyMutation, EmptySubscription)
-        .data(repos)
-        .limit_depth(MAX_QUERY_DEPTH)
-        .limit_complexity(MAX_QUERY_COMPLEXITY)
-        .finish()
-}
-
-/// Create a schema builder with repositories data.
-///
-/// Use this to build a schema with merged query types from bundles.
-/// Remember to call `.limit_depth()` and `.limit_complexity()` before `.finish()`.
-pub fn schema_builder<R: Repositories + 'static>(
-    repositories: Arc<R>,
-) -> SchemaBuilder<CoreQuery, EmptyMutation, EmptySubscription> {
-    let repos: Arc<dyn Repositories> = repositories;
-    Schema::build(CoreQuery, EmptyMutation, EmptySubscription).data(repos)
-}
-
-/// Build a schema with a merged query type.
-///
-/// This is the preferred way to build a schema with bundle extensions.
-/// Includes query depth and complexity limits for DoS protection.
-pub fn build_schema_with_query<Q, R>(
-    query: Q,
-    repositories: Arc<R>,
-) -> Schema<Q, EmptyMutation, EmptySubscription>
-where
-    Q: async_graphql::ObjectType + 'static,
-    R: Repositories + 'static,
-{
-    let repos: Arc<dyn Repositories> = repositories;
-    Schema::build(query, EmptyMutation, EmptySubscription)
-        .data(repos)
-        .limit_depth(MAX_QUERY_DEPTH)
-        .limit_complexity(MAX_QUERY_COMPLEXITY)
-        .finish()
-}
 
 // -----------------------------------------------------------------------------
 // Core Query (frame_system)
@@ -139,6 +91,8 @@ impl CoreQuery {
         number_lte: Option<i64>,
         #[graphql(default)] order: Order,
     ) -> Result<BlockConnection> {
+        validate_cursor(&after, "after")?;
+
         let repos = ctx.data::<Arc<dyn Repositories>>()?;
 
         let filter = BlockFilter {
@@ -183,6 +137,7 @@ impl CoreQuery {
         success: Option<bool>,
         #[graphql(default)] order: Order,
     ) -> Result<ExtrinsicConnection> {
+        validate_cursor(&after, "after")?;
         validate_filter_string(&pallet, "pallet")?;
         validate_filter_string(&call, "call")?;
 
@@ -231,6 +186,7 @@ impl CoreQuery {
         name: Option<String>,
         #[graphql(default)] order: Order,
     ) -> Result<EventConnection> {
+        validate_cursor(&after, "after")?;
         validate_filter_string(&pallet, "pallet")?;
         validate_filter_string(&name, "name")?;
 
@@ -355,6 +311,16 @@ pub fn convert_event(e: maestro_core::models::Event) -> Event {
     }
 }
 
+/// Convert a core `PageInfo` to the GraphQL `PageInfo` (shared across all connections).
+fn convert_page_info(info: maestro_core::ports::PageInfo) -> PageInfo {
+    PageInfo {
+        has_next_page: info.has_next_page,
+        has_previous_page: info.has_previous_page,
+        start_cursor: info.start_cursor.map(|c| c.value),
+        end_cursor: info.end_cursor.map(|c| c.value),
+    }
+}
+
 /// Convert core Block connection to GraphQL BlockConnection.
 pub fn convert_block_connection(
     conn: maestro_core::ports::Connection<maestro_core::models::Block>,
@@ -368,12 +334,7 @@ pub fn convert_block_connection(
                 cursor: e.cursor.value,
             })
             .collect(),
-        page_info: PageInfo {
-            has_next_page: conn.page_info.has_next_page,
-            has_previous_page: conn.page_info.has_previous_page,
-            start_cursor: conn.page_info.start_cursor.map(|c| c.value),
-            end_cursor: conn.page_info.end_cursor.map(|c| c.value),
-        },
+        page_info: convert_page_info(conn.page_info),
         total_count: conn.total_count,
     }
 }
@@ -391,12 +352,7 @@ pub fn convert_extrinsic_connection(
                 cursor: e.cursor.value,
             })
             .collect(),
-        page_info: PageInfo {
-            has_next_page: conn.page_info.has_next_page,
-            has_previous_page: conn.page_info.has_previous_page,
-            start_cursor: conn.page_info.start_cursor.map(|c| c.value),
-            end_cursor: conn.page_info.end_cursor.map(|c| c.value),
-        },
+        page_info: convert_page_info(conn.page_info),
         total_count: conn.total_count,
     }
 }
@@ -414,117 +370,14 @@ pub fn convert_event_connection(
                 cursor: e.cursor.value,
             })
             .collect(),
-        page_info: PageInfo {
-            has_next_page: conn.page_info.has_next_page,
-            has_previous_page: conn.page_info.has_previous_page,
-            start_cursor: conn.page_info.start_cursor.map(|c| c.value),
-            end_cursor: conn.page_info.end_cursor.map(|c| c.value),
-        },
+        page_info: convert_page_info(conn.page_info),
         total_count: conn.total_count,
     }
-}
-
-// -----------------------------------------------------------------------------
-// Helpers & Validation
-// -----------------------------------------------------------------------------
-
-/// Maximum length for hash strings (64 hex chars + "0x" prefix).
-const MAX_HASH_LENGTH: usize = 66;
-/// Maximum length for string filter parameters.
-const MAX_FILTER_STRING_LENGTH: usize = 128;
-/// Maximum page size for pagination.
-const MAX_PAGE_SIZE: i32 = 100;
-/// Default page size for pagination.
-const DEFAULT_PAGE_SIZE: i32 = 20;
-
-/// Parse and validate a hash string.
-fn parse_hash(s: &str) -> Result<[u8; 32]> {
-    if s.len() > MAX_HASH_LENGTH {
-        return Err(async_graphql::Error::new(format!(
-            "Hash too long: maximum {} characters allowed",
-            MAX_HASH_LENGTH
-        )));
-    }
-
-    let s = s.strip_prefix("0x").unwrap_or(s);
-
-    if !s.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err(async_graphql::Error::new(
-            "Invalid hash: must contain only hexadecimal characters",
-        ));
-    }
-
-    let bytes =
-        hex::decode(s).map_err(|e| async_graphql::Error::new(format!("Invalid hash: {}", e)))?;
-
-    bytes
-        .try_into()
-        .map_err(|_| async_graphql::Error::new("Hash must be exactly 32 bytes (64 hex characters)"))
-}
-
-/// Parse and validate an account address.
-fn parse_account(s: &str) -> Result<maestro_core::models::AccountId> {
-    let bytes = parse_hash(s)?;
-    Ok(maestro_core::models::AccountId(bytes))
-}
-
-/// Validate a filter string parameter.
-fn validate_filter_string(s: &Option<String>, field_name: &str) -> Result<()> {
-    if let Some(value) = s {
-        if value.len() > MAX_FILTER_STRING_LENGTH {
-            return Err(async_graphql::Error::new(format!(
-                "{} too long: maximum {} characters allowed",
-                field_name, MAX_FILTER_STRING_LENGTH
-            )));
-        }
-        if value.is_empty() {
-            return Err(async_graphql::Error::new(format!(
-                "{} cannot be empty",
-                field_name
-            )));
-        }
-    }
-    Ok(())
-}
-
-/// Validate and normalize pagination first parameter.
-fn validate_pagination_first(first: Option<i32>) -> i32 {
-    first.unwrap_or(DEFAULT_PAGE_SIZE).clamp(1, MAX_PAGE_SIZE)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_parse_hash_rejects_invalid_input() {
-        assert!(parse_hash(&"ab".repeat(100)).is_err());
-        assert!(parse_hash("0x<script>alert(1)</script>").is_err());
-        assert!(parse_hash(&"ab".repeat(16)).is_err());
-    }
-
-    #[test]
-    fn test_parse_hash_accepts_both_formats() {
-        let with_prefix = parse_hash(&("0x".to_string() + &"ab".repeat(32)));
-        let without_prefix = parse_hash(&"ab".repeat(32));
-        assert!(with_prefix.is_ok());
-        assert!(without_prefix.is_ok());
-        assert_eq!(with_prefix.unwrap(), without_prefix.unwrap());
-    }
-
-    #[test]
-    fn test_validate_filter_string_boundaries() {
-        assert!(validate_filter_string(&Some("".into()), "x").is_err());
-        assert!(validate_filter_string(&Some("x".repeat(200)), "x").is_err());
-        assert!(validate_filter_string(&None, "x").is_ok());
-    }
-
-    #[test]
-    fn test_pagination_clamping() {
-        assert_eq!(validate_pagination_first(Some(-100)), 1);
-        assert_eq!(validate_pagination_first(Some(0)), 1);
-        assert_eq!(validate_pagination_first(Some(10000)), MAX_PAGE_SIZE);
-    }
 
     #[test]
     fn test_extrinsic_status_conversion() {

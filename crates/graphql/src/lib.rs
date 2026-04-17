@@ -4,28 +4,29 @@
 //!
 //! # Building a Schema with Extensions
 //!
-//! Use `build_schema_with_query` to compose CoreQuery with bundle queries:
+//! Compose `CoreQuery` with bundle queries using `async_graphql::MergedObject`,
+//! then build the schema directly:
 //!
 //! ```ignore
-//! use async_graphql::MergedObject;
-//! use maestro_graphql::{build_schema_with_query, CoreQuery};
+//! use async_graphql::{EmptyMutation, EmptySubscription, MergedObject, Schema};
+//! use maestro_graphql::{CoreQuery, MAX_QUERY_COMPLEXITY, MAX_QUERY_DEPTH};
 //! use maestro_handlers::balances::BalancesQuery;
 //!
 //! #[derive(MergedObject, Default)]
 //! struct Query(CoreQuery, BalancesQuery);
 //!
-//! let schema = build_schema_with_query(Query::default(), repositories)
-//!     .data(balances_storage)
+//! let schema = Schema::build(Query::default(), EmptyMutation, EmptySubscription)
+//!     .data(repositories)
+//!     .limit_depth(MAX_QUERY_DEPTH)
+//!     .limit_complexity(MAX_QUERY_COMPLEXITY)
 //!     .finish();
 //! ```
 
 mod schema;
 mod server;
-mod types;
+pub mod validation;
 
 pub use schema::{
-    CoreQuery, MAX_QUERY_COMPLEXITY, MAX_QUERY_DEPTH, Order, PageInfo, build_core_schema,
-    build_schema_with_query, convert_order, schema_builder,
+    CoreQuery, MAX_QUERY_COMPLEXITY, MAX_QUERY_DEPTH, Order, PageInfo, convert_order,
 };
-pub use server::{ServerConfig, serve, serve_with_shutdown};
-pub use types::MaestroSchema;
+pub use server::{ServerConfig, serve_with_shutdown};

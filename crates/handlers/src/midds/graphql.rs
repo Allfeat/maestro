@@ -13,7 +13,7 @@ use super::models::{
     PartyId as PartyIdModel, Recording as RecordingModel, Release as ReleaseModel,
 };
 use super::storage::{MiddsStorage, MusicalWorkFilter, RecordingFilter, ReleaseFilter};
-use crate::graphql_utils::{parse_account, validate_pagination_first};
+use crate::graphql_utils::{parse_account, validate_cursor, validate_pagination_first};
 
 // -----------------------------------------------------------------------------
 // PartyId GraphQL Type
@@ -523,6 +523,8 @@ impl MiddsQuery {
         created_at_block_lte: Option<i64>,
         #[graphql(default)] order: Order,
     ) -> Result<MusicalWorkConnection> {
+        validate_cursor(&after, "after")?;
+
         let storage = ctx.data::<Arc<dyn MiddsStorage>>()?;
 
         let filter = MusicalWorkFilter {
@@ -581,6 +583,8 @@ impl MiddsQuery {
         version: Option<String>,
         #[graphql(default)] order: Order,
     ) -> Result<RecordingConnection> {
+        validate_cursor(&after, "after")?;
+
         let storage = ctx.data::<Arc<dyn MiddsStorage>>()?;
 
         let filter = RecordingFilter {
@@ -651,6 +655,8 @@ impl MiddsQuery {
         country: Option<String>,
         #[graphql(default)] order: Order,
     ) -> Result<ReleaseConnection> {
+        validate_cursor(&after, "after")?;
+
         let storage = ctx.data::<Arc<dyn MiddsStorage>>()?;
 
         let filter = ReleaseFilter {
