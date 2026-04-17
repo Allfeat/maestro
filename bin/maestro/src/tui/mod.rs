@@ -84,7 +84,7 @@ pub async fn run(
     let mut chain_state_rx = bus.watch_chain();
 
     let mut state = AppState::new(logs);
-    state.set_cursor(cursor_rx.borrow().clone());
+    state.set_cursor(*cursor_rx.borrow());
     state.set_chain_state(chain_state_rx.borrow().clone());
 
     loop {
@@ -127,7 +127,7 @@ pub async fn run(
             }
             res = cursor_rx.changed() => {
                 if res.is_ok() {
-                    state.set_cursor(cursor_rx.borrow().clone());
+                    state.set_cursor(*cursor_rx.borrow());
                 }
             }
             res = chain_state_rx.changed() => {

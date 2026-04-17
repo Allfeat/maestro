@@ -22,7 +22,7 @@ use tokio::sync::{broadcast, watch};
 pub const DEFAULT_BUS_CAPACITY: usize = 1024;
 
 /// Latest-known indexer cursor state — published via a `watch` channel.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CursorState {
     /// Highest indexed block.
     pub head: u64,

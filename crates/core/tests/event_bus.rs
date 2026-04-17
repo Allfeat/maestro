@@ -106,7 +106,7 @@ async fn watch_cursor_publishes_latest_value() {
 
     // changed() resolves as soon as any update landed.
     rx.changed().await.unwrap();
-    let latest = rx.borrow_and_update().clone();
+    let latest = *rx.borrow_and_update();
     assert_eq!(latest, CursorState { head: 30, tail: 5 });
 }
 

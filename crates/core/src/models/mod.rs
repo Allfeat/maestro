@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 macro_rules! hash32_newtype {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
-        #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
         pub struct $name(pub [u8; 32]);
 
         impl $name {
