@@ -19,7 +19,7 @@ use crate::models::BlockHash;
 use crate::ports::{
     BlockData, BlockMode, BlockSource, HandlerOutputs, HandlerRegistry, RawBlock, Repositories,
 };
-use crate::services::backfill::{BackfillPlan, BackfillRunner};
+use crate::services::backfill::{BackfillDirection, BackfillPlan, BackfillRange, BackfillRunner};
 
 mod live;
 mod reorg;
@@ -228,15 +228,27 @@ impl<S: BlockSource + 'static, R: Repositories> IndexerService<S, R> {
         }
 
         let tip = initial_head.number;
-        let plan = BackfillPlan::compute(
+        let mut plan = BackfillPlan::compute(
             self.config.backfill.start_block,
             existing_cursor.as_ref(),
             tip,
         );
 
-        if !plan.ranges.is_empty() {
-            // Aggregate total across every planned range so the TUI gauge
-            // tracks the whole backfill, not just the current slice.
+        // Iterative catch-up: the chain keeps producing blocks while we
+        // backfill, so the tip captured above is stale by the time the first
+        // plan finishes. Re-plan against the current finalized head until no
+        // gap remains, otherwise the live subscription would start past the
+        // cursor and every incoming block would trip `CursorGapViolation`.
+        const MAX_CATCHUP_ITERATIONS: u32 = 10;
+        let mut iteration: u32 = 0;
+        let runner = BackfillRunner::new(
+            self.block_source.clone(),
+            self.config.backfill.clone(),
+            self.config.chain_id.clone(),
+            self.event_bus.clone(),
+        );
+
+        while !plan.ranges.is_empty() {
             let plan_from = plan.ranges.iter().map(|r| r.from).min().unwrap_or(0);
             let plan_to = plan.ranges.iter().map(|r| r.to).max().unwrap_or(0);
             let plan_total: u64 = plan.ranges.iter().map(|r| r.to - r.from + 1).sum();
@@ -246,13 +258,16 @@ impl<S: BlockSource + 'static, R: Repositories> IndexerService<S, R> {
                 total: plan_total,
             });
 
-            info!(ranges = ?plan.ranges, "🕰  Starting backfill");
-            let runner = BackfillRunner::new(
-                self.block_source.clone(),
-                self.config.backfill.clone(),
-                self.config.chain_id.clone(),
-                self.event_bus.clone(),
-            );
+            if iteration == 0 {
+                info!(ranges = ?plan.ranges, "🕰  Starting backfill");
+            } else {
+                info!(
+                    iteration,
+                    ranges = ?plan.ranges,
+                    "🕰  Catching up gap accumulated during backfill"
+                );
+            }
+
             for range in plan.ranges {
                 runner
                     .run_range(range, &mut shutdown_rx, |raw| {
@@ -260,6 +275,35 @@ impl<S: BlockSource + 'static, R: Repositories> IndexerService<S, R> {
                     })
                     .await?;
             }
+
+            iteration += 1;
+            if iteration >= MAX_CATCHUP_ITERATIONS {
+                warn!(
+                    iteration,
+                    "reached catch-up iteration cap; switching to live stream — \
+                     the live loop may still observe a residual gap"
+                );
+                break;
+            }
+
+            let current_head = self.block_source.finalized_head().await?.number;
+            let cursor_head = {
+                let mirror = self.cursor_mirror.lock().await;
+                mirror.as_ref().map(|c| c.head)
+            };
+            plan = match cursor_head {
+                Some(head) if current_head > head => BackfillPlan {
+                    ranges: vec![BackfillRange {
+                        from: head + 1,
+                        to: current_head,
+                        direction: BackfillDirection::Upward,
+                    }],
+                },
+                _ => BackfillPlan::default(),
+            };
+        }
+
+        if iteration > 0 {
             info!("✅ Backfill complete, switching to live stream");
         }
 
